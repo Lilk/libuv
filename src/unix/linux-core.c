@@ -141,6 +141,7 @@ void uv__platform_invalidate_fd(uv_loop_t* loop, int fd) {
 
 
 void uv__io_poll(uv_loop_t* loop, int timeout) {
+  printf("linux/core uv io poll\n");
   static int no_epoll_pwait;
   static int no_epoll_wait;
   struct uv__epoll_event events[1024];
@@ -215,7 +216,7 @@ void uv__io_poll(uv_loop_t* loop, int timeout) {
       if (pthread_sigmask(SIG_BLOCK, &sigset, NULL))
         abort();
 
-    if (no_epoll_wait != 0 || (sigmask != 0 && no_epoll_pwait == 0)) {
+    if (sigmask != 0 && no_epoll_pwait == 0) {
       nfds = uv__epoll_pwait(loop->backend_fd,
                              events,
                              ARRAY_SIZE(events),
@@ -755,10 +756,10 @@ void uv_free_cpu_info(uv_cpu_info_t* cpu_infos, int count) {
   int i;
 
   for (i = 0; i < count; i++) {
-    free(cpu_infos[i].model);
+    uv__free(cpu_infos[i].model);
   }
 
-  free(cpu_infos);
+  uv__free(cpu_infos);
 }
 
 
@@ -792,7 +793,7 @@ int uv_interface_addresses(uv_interface_address_t** addresses,
   if (*count == 0)
     return 0;
 
-  *addresses = malloc(*count * sizeof(**addresses));
+  *addresses = uv__malloc(*count * sizeof(**addresses));
   if (!(*addresses))
     return -ENOMEM;
 
@@ -862,10 +863,10 @@ void uv_free_interface_addresses(uv_interface_address_t* addresses,
   int i;
 
   for (i = 0; i < count; i++) {
-    free(addresses[i].name);
+    uv__free(addresses[i].name);
   }
 
-  free(addresses);
+  uv__free(addresses);
 }
 
 

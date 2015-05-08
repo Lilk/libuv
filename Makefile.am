@@ -15,7 +15,10 @@
 ACLOCAL_AMFLAGS = -I m4
 
 AM_CPPFLAGS = -I$(top_srcdir)/include \
-              -I$(top_srcdir)/src
+              -I$(top_srcdir)/src \
+              -L$(HOME)/ix-epfl/libix \
+              -I$(HOME)/ix-epfl/libix \
+              -I$(HOME)/ix-epfl/ix/inc 
 
 include_HEADERS=include/uv.h include/uv-errno.h include/uv-threadpool.h include/uv-version.h
 

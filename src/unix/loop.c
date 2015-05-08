@@ -27,8 +27,55 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "ixev.h"
+
+ static void pp_main_handler(struct ixev_ctx *ctx, unsigned int reason) {
+    printf("Event blablabla %d\n", reason);
+ }
+
+static struct ixev_ctx *pp_accept(struct ip_tuple *id)
+{
+  printf("pp accept\n");
+  /* NOTE: we accept everything right now, did we want a port? */
+  //struct pp_conn *conn = mempool_alloc(&pp_conn_pool);
+  struct ixev_ctx* ctx = (struct ixev_ctx*) malloc(sizeof(struct ixev_ctx));
+  /*if (!conn)
+    return NULL;
+
+  conn->bytes_left = msg_size;*/
+  ixev_ctx_init(ctx);
+  ixev_set_handler(ctx, IXEVIN, &pp_main_handler);
+
+  return ctx;
+}
+
+static void pp_release(struct ixev_ctx *ctx)
+{
+  // struct pp_conn *conn = container_of(ctx, struct pp_conn, ctx);
+
+  // mempool_free(&pp_conn_pool, conn);
+}
+
+struct ixev_conn_ops ixuv_conn_ops = {
+  .accept   = &pp_accept,
+  .release  = &pp_release,
+};
+
+
+
 int uv_loop_init(uv_loop_t* loop) {
   int err;
+
+  ixev_init(&ixuv_conn_ops);
+
+  int ret;
+
+  ret = ixev_init_thread();
+  if (ret) {
+    printf("unable to init IXEV\n");
+    return NULL;
+  };
+
 
   uv__signal_global_once_init();
 

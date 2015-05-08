@@ -27,6 +27,11 @@
 #include <assert.h>
 #include <errno.h>
 
+#include <stdio.h>
+
+#include "ixev.h"
+
+
 
 int uv_tcp_init(uv_loop_t* loop, uv_tcp_t* tcp) {
   uv__stream_init(loop, (uv_stream_t*)tcp, UV_TCP);
@@ -102,6 +107,12 @@ int uv__tcp_bind(uv_tcp_t* tcp,
 }
 
 
+struct ixev_conn_ops pp_conn_ops = {
+  .accept   = NULL,
+  .release  = NULL,
+};
+
+
 int uv__tcp_connect(uv_connect_t* req,
                     uv_tcp_t* handle,
                     const struct sockaddr* addr,
@@ -109,6 +120,9 @@ int uv__tcp_connect(uv_connect_t* req,
                     uv_connect_cb cb) {
   int err;
   int r;
+
+ r = ixev_init(&pp_conn_ops);
+ 
 
   assert(handle->type == UV_TCP);
 
@@ -161,7 +175,7 @@ int uv_tcp_open(uv_tcp_t* handle, uv_os_sock_t sock) {
   err = uv__nonblock(sock, 1);
   if (err)
     return err;
-
+  
   return uv__stream_open((uv_stream_t*)handle,
                          sock,
                          UV_STREAM_READABLE | UV_STREAM_WRITABLE);
@@ -216,6 +230,8 @@ int uv_tcp_listen(uv_tcp_t* tcp, int backlog, uv_connection_cb cb) {
   static int single_accept = -1;
   int err;
 
+  fprintf(stderr, "Listening to  NEW CONNECTIONs. LOL :(\n");
+  fflush(stderr);
   if (tcp->delayed_error)
     return tcp->delayed_error;
 
