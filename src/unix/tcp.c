@@ -98,7 +98,7 @@ static void ixuv__multiplex_handler(struct ixev_ctx *ctx, unsigned int reason) {
 
 struct ixev_ctx *ixuv__accept(struct ip_tuple *id)
 {
-  
+
   // struct in_addr src, dst;
   // src.s_addr = id->src_ip;
   // dst.s_addr = id->dst_ip;
@@ -219,10 +219,10 @@ int uv__tcp_bind(uv_tcp_t* tcp,
 }
 
 
-struct ixev_conn_ops pp_conn_ops = {
-  .accept   = NULL,
-  .release  = NULL,
-};
+// struct ixev_conn_ops pp_conn_ops = {
+//   .accept   = NULL,
+//   .release  = NULL,
+// };
 
 
 int uv__tcp_connect(uv_connect_t* req,
@@ -233,7 +233,7 @@ int uv__tcp_connect(uv_connect_t* req,
   int err;
   int r;
 
- r = ixev_init(&pp_conn_ops);
+ //r = ixev_init(&pp_conn_ops);
  
 
   assert(handle->type == UV_TCP);

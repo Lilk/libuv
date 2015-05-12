@@ -28,7 +28,6 @@ extern "C" {
 #endif
 
 
-#include "ixev.h"
 typedef struct ixev_ctx ixev_ctx;
 
 
@@ -505,8 +504,8 @@ struct uv_tcp_s {
   UV_HANDLE_FIELDS
   UV_STREAM_FIELDS
   UV_TCP_PRIVATE_FIELDS
-  ixev_ctx* _ixev_ctx;                                                        \
-  ctx_post* pending_ctx_head;                                                 \
+  ixev_ctx* _ixev_ctx;
+  ctx_post* pending_ctx_head;
   ctx_post* pending_ctx_tail;  
 };
 

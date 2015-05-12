@@ -323,7 +323,7 @@ int uv_run(uv_loop_t* loop, uv_run_mode mode) {
 
     uv__io_poll(loop, timeout);
     printf("Polling\n");
-    // ixev_wait();
+    ixev_wait();
     //ix_poll();
     uv__run_check(loop);
     uv__run_closing_handles(loop);
