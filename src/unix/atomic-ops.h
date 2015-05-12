@@ -20,7 +20,7 @@
 
 UV_UNUSED(static int cmpxchgi(int* ptr, int oldval, int newval));
 UV_UNUSED(static long cmpxchgl(long* ptr, long oldval, long newval));
-UV_UNUSED(static void cpu_relax(void));
+UV_UNUSED(static void cpu_relax_uv(void));
 
 /* Prefer hand-rolled assembly over the gcc builtins because the latter also
  * issue full memory barriers.
@@ -51,7 +51,7 @@ UV_UNUSED(static long cmpxchgl(long* ptr, long oldval, long newval)) {
 #endif
 }
 
-UV_UNUSED(static void cpu_relax(void)) {
+UV_UNUSED(static void cpu_relax_uv(void)) {
 #if defined(__i386__) || defined(__x86_64__)
   __asm__ __volatile__ ("rep; nop");  /* a.k.a. PAUSE */
 #endif

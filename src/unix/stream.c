@@ -570,15 +570,18 @@ int uv_accept(uv_stream_t* server, uv_stream_t* client) {
   switch (client->type) {
     case UV_NAMED_PIPE:
     case UV_TCP:
-      err = uv__stream_open(client,
-                            server->accepted_fd,
-                            UV_STREAM_READABLE | UV_STREAM_WRITABLE);
+      //err = uv__stream_open(client,
+      //                      server->accepted_fd,
+      //                      UV_STREAM_READABLE | UV_STREAM_WRITABLE);
+      err = uv__tcp_accept((uv_tcp_t*)server, (uv_tcp_t*) client);
       if (err) {
         /* TODO handle error */
-        uv__close(server->accepted_fd);
-        goto done;
+        //uv__close(server->accepted_fd);
+        //  goto done;
+        return err;
       }
       break;
+      return 0;
 
     case UV_UDP:
       err = uv_udp_open((uv_udp_t*) client, server->accepted_fd);
@@ -1484,8 +1487,9 @@ int uv_read_start(uv_stream_t* stream,
 
   stream->read_cb = read_cb;
   stream->alloc_cb = alloc_cb;
-
-  uv__io_start(stream->loop, &stream->io_watcher, UV__POLLIN);
+  if(stream->type != UV_TCP){ //IXUV: do not start normal FD watcher for ix backend 
+    uv__io_start(stream->loop, &stream->io_watcher, UV__POLLIN);
+  }
   uv__handle_start(stream);
   uv__stream_osx_interrupt_select(stream);
 

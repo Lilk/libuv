@@ -29,14 +29,122 @@
 
 #include <stdio.h>
 
-#include "ixev.h"
+//#include "ixev.h"
+
+ #include <netinet/in.h>
 
 
 
 int uv_tcp_init(uv_loop_t* loop, uv_tcp_t* tcp) {
   uv__stream_init(loop, (uv_stream_t*)tcp, UV_TCP);
+  tcp->_ixev_ctx = NULL;
   return 0;
 }
+
+static uv_tcp_t* singleton_listening_socket = NULL;
+
+void ixuv__put_binding(unsigned long addr, unsigned short port, uv_tcp_t* tcp){
+  singleton_listening_socket = tcp;
+}
+uv_tcp_t* ixuv__get_binding(unsigned long addr, unsigned short port){
+  return singleton_listening_socket;
+}
+
+void ixuv__enqueue_ctx(uv_tcp_t* tcp, ixev_ctx* ctx){
+  ctx_post* post = (ctx_post*) malloc(sizeof(ctx_post));
+  post->_ixev_ctx = ctx;
+  post->next = NULL;
+  if(tcp->pending_ctx_head == NULL){
+    tcp->pending_ctx_head = post;
+    tcp->pending_ctx_tail = post;
+  }
+  tcp->pending_ctx_tail->next = post;
+  tcp->pending_ctx_tail = post;
+
+}
+ixev_ctx* ixuv__dequeue_ctx(uv_tcp_t* tcp){
+  if(tcp->pending_ctx_head == NULL){
+    return NULL;
+  }
+  ctx_post* post = tcp->pending_ctx_head;
+  ixev_ctx* ixev_ctx_ = post -> _ixev_ctx; 
+  if (  tcp->pending_ctx_head ==  tcp->pending_ctx_tail) { 
+     tcp->pending_ctx_head = NULL;
+     tcp->pending_ctx_tail = NULL;
+  } else {
+     tcp->pending_ctx_head = post->next; //Maybe this line suffices
+  }
+  free(post);
+  return ixev_ctx_;
+}
+
+static void ixuv__multiplex_handler(struct ixev_ctx *ctx, unsigned int reason) {
+    printf("ixuv__multiplex_handler, reason: %d (IXEVIN: %d, IXEVOUT: %d, IXEVHUP %d)\n", reason, IXEVIN, IXEVOUT,IXEVHUP);
+    uv_tcp_t* stream = (uv_tcp_t*) ctx->user_data;
+    if(stream==NULL){
+      fprintf(stderr, "Null context from ctx handler - in need of a queue?\n");
+      return;
+    }
+    if(reason == IXEVIN && stream->read_cb != NULL){
+        uv_buf_t buf;
+        stream->alloc_cb((uv_handle_t*)stream, 64 * 1024, &buf);
+        int read = ixev_recv(ctx, buf.base, buf.len);
+        // if(stream->read_cb != NULL){ // @TODO: Maybe this should enclose the read from ix as well.
+        stream->read_cb((uv_stream_t*)stream, read, &buf);
+        // }
+    } 
+
+}
+
+struct ixev_ctx *ixuv__accept(struct ip_tuple *id)
+{
+  
+  // struct in_addr src, dst;
+  // src.s_addr = id->src_ip;
+  // dst.s_addr = id->dst_ip;
+  // printf("Got conn from: %s:%d to %s:%d\n", inet_ntoa(src), id->src_port, inet_ntoa(dst), id->dst_port);
+  /* NOTE: we accept everything right now, did we want a port? */
+  
+  //struct pp_conn *conn = mempool_alloc(&pp_conn_pool);
+
+  unsigned long addr = id->src_ip; // ixev returns this host as src and remote as dst
+  unsigned short port = id->src_port;
+  uv_tcp_t* listening_socket = ixuv__get_binding(addr, port);
+  if (listening_socket==NULL)
+  {
+    return NULL; //No listening socket: do not accept connections.
+  }
+
+
+  ixev_ctx* ctx = (ixev_ctx*) malloc(sizeof(ixev_ctx)); // @TODO: Implement mempool allocation
+  if (!ctx)
+    return NULL;
+
+  ixev_ctx_init(ctx);
+  ctx->user_data = 0;
+  ixev_set_handler(ctx, IXEVIN|IXEVOUT, &ixuv__multiplex_handler); //Handles both in and out events, to avoid constant reregistration.
+  ixuv__enqueue_ctx(listening_socket, ctx);
+
+  if(listening_socket->connection_cb != NULL){ //Maybe while pending_ctx_head != NULL, but would go into infinite loop if user supplies method that does not poll queue. (Calls accept)
+    listening_socket->connection_cb((uv_stream_t*)listening_socket, 0); //unsure what errors could have occured, also right way to have this?
+  }
+
+
+  return ctx;
+}
+
+int uv__tcp_accept(uv_tcp_t* server, uv_tcp_t* client){
+  ixev_ctx* ctx = ixuv__dequeue_ctx(server);
+  if (ctx==NULL){
+    return -EAGAIN;
+  }
+  client->_ixev_ctx = ctx;
+  ctx->user_data = (unsigned long) client;
+  return 0;
+}
+
+
+
 
 
 static int maybe_new_socket(uv_tcp_t* handle, int domain, int flags) {
@@ -65,11 +173,15 @@ int uv__tcp_bind(uv_tcp_t* tcp,
                  const struct sockaddr* addr,
                  unsigned int addrlen,
                  unsigned int flags) {
-  int err;
-  int on;
+  struct sockaddr_in* in_addr = (struct sockaddr_in*) addr;
+  ixuv__put_binding(in_addr->sin_addr.s_addr, in_addr->sin_port, tcp);
+  return 0;
 
+/*  int err;
+  int on;
+*/
   /* Cannot set IPv6-only mode on non-IPv6 socket. */
-  if ((flags & UV_TCP_IPV6ONLY) && addr->sa_family != AF_INET6)
+ /* if ((flags & UV_TCP_IPV6ONLY) && addr->sa_family != AF_INET6)
     return -EINVAL;
 
   err = maybe_new_socket(tcp,
@@ -103,7 +215,7 @@ int uv__tcp_bind(uv_tcp_t* tcp,
   if (addr->sa_family == AF_INET6)
     tcp->flags |= UV_HANDLE_IPV6;
 
-  return 0;
+  return 0;*/
 }
 
 
@@ -243,18 +355,18 @@ int uv_tcp_listen(uv_tcp_t* tcp, int backlog, uv_connection_cb cb) {
   if (single_accept)
     tcp->flags |= UV_TCP_SINGLE_ACCEPT;
 
-  err = maybe_new_socket(tcp, AF_INET, UV_STREAM_READABLE);
+  // err = maybe_new_socket(tcp, AF_INET, UV_STREAM_READABLE);
   if (err)
     return err;
 
-  if (listen(tcp->io_watcher.fd, backlog))
-    return -errno;
+  // if (listen(tcp->io_watcher.fd, backlog))
+  //   return -errno;
 
-  tcp->connection_cb = cb;
+  tcp->connection_cb = cb; // Use this from special callback given to IXEV
 
   /* Start listening for connections. */
-  tcp->io_watcher.cb = uv__server_io;
-  uv__io_start(tcp->loop, &tcp->io_watcher, UV__POLLIN);
+  // tcp->io_watcher.cb = uv__server_io;
+  // uv__io_start(tcp->loop, &tcp->io_watcher, UV__POLLIN);
 
   return 0;
 }

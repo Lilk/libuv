@@ -24,6 +24,8 @@
 
 #include "uv-common.h"
 
+
+
 #include <assert.h>
 #include <stdlib.h> /* abort */
 #include <string.h> /* strrchr */
@@ -208,6 +210,13 @@ int uv__open_cloexec(const char* path, int flags);
 int uv_tcp_listen(uv_tcp_t* tcp, int backlog, uv_connection_cb cb);
 int uv__tcp_nodelay(int fd, int on);
 int uv__tcp_keepalive(int fd, int on, unsigned int delay);
+
+void ixuv__put_binding(unsigned long addr, unsigned short port, uv_tcp_t* tcp);
+uv_tcp_t* ixuv__get_binding(unsigned long addr, unsigned short port);
+int uv__tcp_accept(uv_tcp_t* server, uv_tcp_t* client);
+
+struct ixev_ctx *ixuv__accept(struct ip_tuple *id);
+
 
 /* pipe */
 int uv_pipe_listen(uv_pipe_t* handle, int backlog, uv_connection_cb cb);

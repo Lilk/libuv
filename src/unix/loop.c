@@ -51,13 +51,14 @@ static struct ixev_ctx *pp_accept(struct ip_tuple *id)
 
 static void pp_release(struct ixev_ctx *ctx)
 {
+  printf("Need to implement a nice release method\n");
   // struct pp_conn *conn = container_of(ctx, struct pp_conn, ctx);
 
   // mempool_free(&pp_conn_pool, conn);
 }
 
 struct ixev_conn_ops ixuv_conn_ops = {
-  .accept   = &pp_accept,
+  .accept   = &ixuv__accept,
   .release  = &pp_release,
 };
 

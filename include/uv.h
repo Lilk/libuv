@@ -27,6 +27,11 @@
 extern "C" {
 #endif
 
+
+#include "ixev.h"
+typedef struct ixev_ctx ixev_ctx;
+
+
 #ifdef _WIN32
   /* Windows - set up dll import/export decorators. */
 # if defined(BUILDING_UV_SHARED)
@@ -481,6 +486,15 @@ UV_EXTERN int uv_stream_set_blocking(uv_stream_t* handle, int blocking);
 
 UV_EXTERN int uv_is_closing(const uv_handle_t* handle);
 
+/**
+ * IXUV extension: adds a queue of ixev_ctx as UV_TCP_PRIVATE field
+ */
+//struct ctx_post;
+typedef struct ctx_post ctx_post;
+struct ctx_post{
+  ixev_ctx* _ixev_ctx;
+  ctx_post* next;     
+} ;
 
 /*
  * uv_tcp_t is a subclass of uv_stream_t.
@@ -491,6 +505,9 @@ struct uv_tcp_s {
   UV_HANDLE_FIELDS
   UV_STREAM_FIELDS
   UV_TCP_PRIVATE_FIELDS
+  ixev_ctx* _ixev_ctx;                                                        \
+  ctx_post* pending_ctx_head;                                                 \
+  ctx_post* pending_ctx_tail;  
 };
 
 UV_EXTERN int uv_tcp_init(uv_loop_t*, uv_tcp_t* handle);

@@ -35,7 +35,7 @@ UV_UNUSED(static void uv_spinlock_init(uv_spinlock_t* spinlock)) {
 }
 
 UV_UNUSED(static void uv_spinlock_lock(uv_spinlock_t* spinlock)) {
-  while (!uv_spinlock_trylock(spinlock)) cpu_relax();
+  while (!uv_spinlock_trylock(spinlock)) cpu_relax_uv();
 }
 
 UV_UNUSED(static void uv_spinlock_unlock(uv_spinlock_t* spinlock)) {

@@ -22,6 +22,8 @@
 #ifndef UV_UNIX_H
 #define UV_UNIX_H
 
+//#include <ixev.h>
+
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
@@ -281,7 +283,13 @@ typedef struct {
   void* queued_fds;                                                           \
   UV_STREAM_PRIVATE_PLATFORM_FIELDS                                           \
 
-#define UV_TCP_PRIVATE_FIELDS /* empty */
+
+#define UV_TCP_PRIVATE_FIELDS                                                
+ //\
+  // ixev_ctx* _ixev_ctx;                                                        \
+  // ctx_post* pending_ctx_head;                                                 \
+  // ctx_post* pending_ctx_tail;                                                 \
+/* empty */
 
 #define UV_UDP_PRIVATE_FIELDS                                                 \
   uv_alloc_cb alloc_cb;                                                       \
