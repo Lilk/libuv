@@ -23,7 +23,7 @@
 #define UV_UNIX_INTERNAL_H_
 
 #include "uv-common.h"
- #include "ixev.h"
+#include "ixev.h"
  
 
 
@@ -218,6 +218,11 @@ uv_tcp_t* ixuv__get_binding(unsigned long addr, unsigned short port);
 int uv__tcp_accept(uv_tcp_t* server, uv_tcp_t* client);
 
 struct ixev_ctx *ixuv__accept(struct ip_tuple *id);
+int uv__tcp_write(uv_write_t* req,
+             uv_tcp_t* handle,
+             const uv_buf_t bufs[],
+             unsigned int nbufs,
+             uv_write_cb cb);
 
 
 /* pipe */

@@ -561,14 +561,25 @@ void uv__server_io(uv_loop_t* loop, uv__io_t* w, unsigned int events) {
 int uv_accept(uv_stream_t* server, uv_stream_t* client) {
   int err;
 
+  printf("uv_accept\n");
   /* TODO document this */
   assert(server->loop == client->loop);
 
-  if (server->accepted_fd == -1)
+  if (client->type != UV_TCP && server->accepted_fd == -1)
     return -EAGAIN;
 
   switch (client->type) {
     case UV_NAMED_PIPE:
+      err = uv__stream_open(client,
+                           server->accepted_fd,
+                           UV_STREAM_READABLE | UV_STREAM_WRITABLE);
+      if (err) {
+        /* TODO handle error */
+        uv__close(server->accepted_fd);
+         goto done;
+      }
+      break;
+      
     case UV_TCP:
       //err = uv__stream_open(client,
       //                      server->accepted_fd,
@@ -580,7 +591,7 @@ int uv_accept(uv_stream_t* server, uv_stream_t* client) {
         //  goto done;
         return err;
       }
-      break;
+      // break;
       return 0;
 
     case UV_UDP:
@@ -644,6 +655,7 @@ int uv_listen(uv_stream_t* stream, int backlog, uv_connection_cb cb) {
   if (err == 0)
     uv__handle_start(stream);
 
+  printf("uv_listen - returning %d\n", err);
   return err;
 }
 
@@ -692,7 +704,7 @@ static size_t uv__write_req_size(uv_write_t* req) {
 }
 
 
-static void uv__write_req_finish(uv_write_t* req) {
+void uv__write_req_finish(uv_write_t* req) { //modified from static
   uv_stream_t* stream = req->handle;
 
   /* Pop the req off tcp->write_queue. */
@@ -1406,6 +1418,7 @@ int uv_write(uv_write_t* req,
              const uv_buf_t bufs[],
              unsigned int nbufs,
              uv_write_cb cb) {
+  if(handle->type == UV_TCP) return uv__tcp_write(req, (uv_tcp_t*) handle, bufs, nbufs, cb);
   return uv_write2(req, handle, bufs, nbufs, NULL, cb);
 }
 
@@ -1424,6 +1437,9 @@ int uv_try_write(uv_stream_t* stream,
   size_t written;
   size_t req_size;
   uv_write_t req;
+
+  if(stream->type == UV_TCP) return uv__tcp_write(&req, (uv_tcp_t*) stream, bufs, nbufs, NULL);
+
 
   /* Connecting or already writing some data */
   if (stream->connect_req != NULL || stream->write_queue_size != 0)
@@ -1482,7 +1498,7 @@ int uv_read_start(uv_stream_t* stream,
   /* TODO: keep track of tcp state. If we've gotten a EOF then we should
    * not start the IO watcher.
    */
-  assert(uv__stream_fd(stream) >= 0);
+  assert(uv__stream_fd(stream) >= 0 || stream->type == UV_TCP);
   assert(alloc_cb);
 
   stream->read_cb = read_cb;

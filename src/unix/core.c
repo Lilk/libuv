@@ -321,9 +321,11 @@ int uv_run(uv_loop_t* loop, uv_run_mode mode) {
     if ((mode == UV_RUN_ONCE && !ran_pending) || mode == UV_RUN_DEFAULT)
       timeout = uv_backend_timeout(loop);
 
-    uv__io_poll(loop, timeout);
+    printf("uv_poll\n");
+    //uv__io_poll(loop, timeout);
     printf("Polling\n");
     ixev_wait();
+    printf("After IXEV wait\n");
     //ix_poll();
     uv__run_check(loop);
     uv__run_closing_handles(loop);
