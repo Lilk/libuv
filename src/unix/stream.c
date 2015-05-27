@@ -427,19 +427,24 @@ void uv__stream_flush_write_queue(uv_stream_t* stream, int error) {
 
 
 void uv__stream_destroy(uv_stream_t* stream) {
+  // printf("UV stream destroy...\n");
   assert(!uv__io_active(&stream->io_watcher, UV__POLLIN | UV__POLLOUT));
   assert(stream->flags & UV_CLOSED);
 
   if (stream->connect_req) {
+    // printf("uv connect req\n");
     uv__req_unregister(stream->loop, stream->connect_req);
     stream->connect_req->cb(stream->connect_req, -ECANCELED);
     stream->connect_req = NULL;
   }
 
+  // printf("flush write queue\n");
   uv__stream_flush_write_queue(stream, -ECANCELED);
+  // printf("write callbacks\n");
   uv__write_callbacks(stream);
 
   if (stream->shutdown_req) {
+    // printf("shutdown req\n");
     /* The ECANCELED error code is a lie, the shutdown(2) syscall is a
      * fait accompli at this point. Maybe we should revisit this in v0.11.
      * A possible reason for leaving it unchanged is that it informs the
@@ -450,7 +455,7 @@ void uv__stream_destroy(uv_stream_t* stream) {
     stream->shutdown_req = NULL;
   }
 
-  assert(stream->write_queue_size == 0);
+  //assert(stream->write_queue_size == 0);
 }
 
 
@@ -561,7 +566,7 @@ void uv__server_io(uv_loop_t* loop, uv__io_t* w, unsigned int events) {
 int uv_accept(uv_stream_t* server, uv_stream_t* client) {
   int err;
 
-  printf("uv_accept\n");
+  //printf("uv_accept\n");
   /* TODO document this */
   assert(server->loop == client->loop);
 
@@ -925,19 +930,21 @@ static void uv__write_callbacks(uv_stream_t* stream) {
     req = QUEUE_DATA(q, uv_write_t, queue);
     QUEUE_REMOVE(q);
     uv__req_unregister(stream->loop, req);
-
+    // printf("write callback %p (%p)\n", req, stream);
     if (req->bufs != NULL) {
+      // printf("bufs != NULL\n");
       stream->write_queue_size -= uv__write_req_size(req);
       if (req->bufs != req->bufsml)
         free(req->bufs);
       req->bufs = NULL;
     }
 
+    // printf("calling cb\n");
     /* NOTE: call callback AFTER freeing the request data. */
     if (req->cb)
       req->cb(req, req->error);
   }
-
+  // printf("Asserting of empty queue\n");
   assert(QUEUE_EMPTY(&stream->write_completed_queue));
 }
 
@@ -1193,6 +1200,8 @@ int uv_shutdown(uv_shutdown_t* req, uv_stream_t* stream, uv_shutdown_cb cb) {
   assert((stream->type == UV_TCP || stream->type == UV_NAMED_PIPE) &&
          "uv_shutdown (unix) only supports uv_handle_t right now");
 
+  
+  //printf("UV shutdown called.\n");
   if (!(stream->flags & UV_STREAM_WRITABLE) ||
       stream->flags & UV_STREAM_SHUT ||
       stream->flags & UV_STREAM_SHUTTING ||
@@ -1200,6 +1209,7 @@ int uv_shutdown(uv_shutdown_t* req, uv_stream_t* stream, uv_shutdown_cb cb) {
       stream->flags & UV_CLOSING) {
     return -ENOTCONN;
   }
+
 
   assert(uv__stream_fd(stream) >= 0);
 
@@ -1210,8 +1220,10 @@ int uv_shutdown(uv_shutdown_t* req, uv_stream_t* stream, uv_shutdown_cb cb) {
   stream->shutdown_req = req;
   stream->flags |= UV_STREAM_SHUTTING;
 
-  uv__io_start(stream->loop, &stream->io_watcher, UV__POLLOUT);
-  uv__stream_osx_interrupt_select(stream);
+  if(stream->type != UV_TCP){
+   uv__io_start(stream->loop, &stream->io_watcher, UV__POLLOUT);
+   uv__stream_osx_interrupt_select(stream);
+  }
 
   return 0;
 }
@@ -1580,7 +1592,21 @@ void uv__stream_close(uv_stream_t* handle) {
     handle->select = NULL;
   }
 #endif /* defined(__APPLE__) */
+  if(handle->type == UV_TCP){ //For IX
+      // printf("Closing IX:TCP\n");
+      if( ((uv_tcp_t*) handle)->_ixev_ctx != NULL){
+       ixev_close(((uv_tcp_t*) handle)->_ixev_ctx);
+       ((uv_tcp_t*) handle)->_ixev_ctx = NULL;
+      }
+      // ix_flush();
+      // printf("after\n");
+      handle->io_watcher.fd = -1;
+      uv__handle_stop(handle);
+      //uv__io_stop called by read stop will assign to w->fd which is dangerous as ix flow might overlap etc..
+      return;
+  }
 
+  // printf("Uv uv__stream_close\n");
   uv__io_close(handle->loop, &handle->io_watcher);
   uv_read_stop(handle);
   uv__handle_stop(handle);
@@ -1592,7 +1618,7 @@ void uv__stream_close(uv_stream_t* handle) {
     handle->io_watcher.fd = -1;
   }
 
-  if (handle->accepted_fd != -1) {
+  if (handle->accepted_fd -1) {
     uv__close(handle->accepted_fd);
     handle->accepted_fd = -1;
   }

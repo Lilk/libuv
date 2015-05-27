@@ -33,6 +33,11 @@
     printf("Event blablabla %d\n", reason);
  }
 
+ uv_buf_t null_buf = {
+  .base = NULL,
+  .len = 0,
+ };
+
 static struct ixev_ctx *pp_accept(struct ip_tuple *id)
 {
   printf("pp accept\n");
@@ -51,9 +56,23 @@ static struct ixev_ctx *pp_accept(struct ip_tuple *id)
 
 static void pp_release(struct ixev_ctx *ctx)
 {
-  printf("Need to implement a nice release method\n");
+  // printf("Need to implement a nice release method: %p (%p)\n", ctx, ctx->user_data);
   // struct pp_conn *conn = container_of(ctx, struct pp_conn, ctx);
-
+  uv_tcp_t* stream = (uv_tcp_t*) ctx->user_data; 
+  ctx->user_data = NULL;
+  if(stream != NULL && stream->read_cb != NULL){
+    // printf("Gonna call read callback with nullbuf\n");
+    stream->read_cb((uv_stream_t*)stream, -ENOTCONN, &null_buf);
+    // printf("Call OK\n");
+  }
+  if(stream != NULL){
+    // printf("Nulling context and fd\n");
+    stream-> _ixev_ctx = NULL;
+    stream->io_watcher.fd = -1;
+  }
+  // printf("Freeing ctx\n");
+  free(ctx);
+  // printf("Freed context\n");
   // mempool_free(&pp_conn_pool, conn);
 }
 
@@ -74,7 +93,7 @@ int uv_loop_init(uv_loop_t* loop) {
   ret = ixev_init_thread();
   if (ret) {
     printf("unable to init IXEV\n");
-    return NULL;
+    return -1;
   };
 
 

@@ -11,6 +11,7 @@
 # WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
 # ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 # OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+# -ftree-vectorize -mfpmath=sse -mmmx -msse -msse2 -msse3 -msse4 -fomit-frame-pointer -fpredictive-commoning -pipe -ftree-loop-linear  -fivopts -ftracer -funroll-loops -fvariable-expansion-in-unroller -fprefetch-loop-arrays -march=native -mtune=native
 
 ACLOCAL_AMFLAGS = -I m4
 
@@ -18,7 +19,7 @@ AM_CPPFLAGS = -I$(top_srcdir)/include \
               -I$(top_srcdir)/src \
               -L$(HOME)/ix-epfl/libix \
               -I$(HOME)/ix-epfl/libix \
-              -I$(HOME)/ix-epfl/ix/inc -lix
+              -I$(HOME)/ix-epfl/ix/inc -lix -O3 
 
 include_HEADERS=include/uv.h include/uv-errno.h include/uv-threadpool.h include/uv-version.h
 
