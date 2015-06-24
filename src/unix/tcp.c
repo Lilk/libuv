@@ -273,6 +273,7 @@ int uv__tcp_write(uv_write_t* req,
              const uv_buf_t bufs[],
              unsigned int nbufs,
              uv_write_cb cb){
+
   uv_tcp_t* stream = handle; //alias
 
   #ifdef ZEROCOPY
@@ -289,7 +290,6 @@ int uv__tcp_write(uv_write_t* req,
   }
   #endif
 
-  // printf("TCP write\n");
 
   int error = 0;
   unsigned int i;
@@ -300,23 +300,13 @@ int uv__tcp_write(uv_write_t* req,
   }
   for (i = 0; i < nbufs && error >= 0; ++i)
   {
-    // printf("Writing buffer %d;\n%s\n-------------\n", i, bufs[i].base);
     #ifdef ZEROCOPY
-    // printf("xero\n");
     error = ixev_send_zc( handle->_ixev_ctx, (void*) bufs[i].base, (size_t) bufs[i].len); 
     #else
-    // printf("copy\n");
     error = ixev_send( handle->_ixev_ctx, (void*) bufs[i].base, (size_t) bufs[i].len); 
     #endif
     if(error < 0) printf("Error: %d\n", error) ; 
   }
-  /*
-  req->cb = cb;
-  req->handle = (uv_stream_t*) handle;
-  req->error = error < 0? error: 0; 
-  req->send_handle = NULL;
-  QUEUE_INIT(&req->queue);
-*/
 
 /** Taken from uv_write2 */
   uv__req_init(stream->loop, req, UV_WRITE);
@@ -328,48 +318,10 @@ int uv__tcp_write(uv_write_t* req,
   QUEUE_INIT(&req->queue);
 
 
-   req->bufs = req->bufsml;
-   // if (nbufs > ARRAY_SIZE(req->bufsml))
-   //   req->bufs = malloc(nbufs * sizeof(bufs[0]));
-
-  // if (req->bufs == NULL)
-  //  return -ENOMEM;
-
-   // memcpy(req->bufs, bufs, nbufs * sizeof(bufs[0]));
-
-  // req->bufs = NULL;
+  req->bufs = req->bufsml;
+  
   req->nbufs = nbufs;
   req->write_index = nbufs;
-  // stream->write_queue_size += 0; //uv__count_bufs(bufs, nbufs);
-  // req->bufs = bufs;
-  // req->nbufs = nbufs;
-  // req->write_index = 0;
-  // stream->write_queue_size += uv__count_bufs(bufs, nbufs);
-  /* Append the request to write_queue. */
-  //QUEUE_INSERT_TAIL(&stream->write_queue, &req->queue);
-/** Taken from uv_write2 */
-
-
-
-  //if(cb != NULL){
-//    cb(req, req->error); //
- // }
-  //uv__write_req_finish(req);
-
-
-  /* Add it to the write_completed_queue where it will have its
-   * callback called in the near future.
-   */
-  // QUEUE_INSERT_TAIL(&stream->write_completed_queue, &req->queue);
-  // uv__write_req_finish(req);
-   // printf("CB: %p (%p )\n", (stream->io_watcher).cb,  NULL);
-  // uv__io_feed(stream->loop, &stream->io_watcher);
-
-   // QUEUE_INSERT_TAIL(&stream->write_completed_queue, &req->queue);
-    // printf("before io feed\n");
-   // uv__io_feed(stream->loop, &stream->io_watcher);
-    // printf("after io feed\n");
-
 
 
   #ifdef ZEROCOPY
@@ -381,13 +333,11 @@ int uv__tcp_write(uv_write_t* req,
     ixev_add_sent_cb(handle->_ixev_ctx, &ref->_ixev_ref);
 
     // QUEUE_INSERT_TAIL(&stream->write_queue, &req->queue);
-    stream->write_queue_size += 1;
+    stream->write_queue_size += 1; //Important to not make libuv/app close the stream prematurely
   #else
     QUEUE_INSERT_TAIL(&stream->write_completed_queue, &req->queue);
     uv__io_feed(stream->loop, &stream->io_watcher);
   #endif
-
-  
 
 
   return 0;
