@@ -29,32 +29,13 @@
 
 #include "ixev.h"
 
- static void pp_main_handler(struct ixev_ctx *ctx, unsigned int reason) {
-    printf("Event blablabla %d\n", reason);
- }
-
  uv_buf_t null_buf = {
   .base = NULL,
   .len = 0,
  };
 
-static struct ixev_ctx *pp_accept(struct ip_tuple *id)
-{
-  printf("pp accept\n");
-  /* NOTE: we accept everything right now, did we want a port? */
-  //struct pp_conn *conn = mempool_alloc(&pp_conn_pool);
-  struct ixev_ctx* ctx = (struct ixev_ctx*) malloc(sizeof(struct ixev_ctx));
-  /*if (!conn)
-    return NULL;
 
-  conn->bytes_left = msg_size;*/
-  ixev_ctx_init(ctx);
-  ixev_set_handler(ctx, IXEVIN, &pp_main_handler);
-
-  return ctx;
-}
-
-static void pp_release(struct ixev_ctx *ctx)
+static void ixuv_release(struct ixev_ctx *ctx)
 {
   // printf("Need to implement a nice release method: %p (%p)\n", ctx, ctx->user_data);
   // struct pp_conn *conn = container_of(ctx, struct pp_conn, ctx);
@@ -62,7 +43,9 @@ static void pp_release(struct ixev_ctx *ctx)
   ctx->user_data = NULL;
   if(stream != NULL && stream->read_cb != NULL){
     // printf("Gonna call read callback with nullbuf\n");
-    stream->read_cb((uv_stream_t*)stream, -ENOTCONN, &null_buf);
+    stream->read_cb((uv_stream_t*)stream, UV_EOF, &null_buf);
+    uv__make_close_pending((uv_handle_t*) stream); //Since we return immediately from uv close in case of TCP to allow IX to close the connection before calling the callback
+    //TODO;  CHECK if node will call uv_close upon receiving UV_EOF on reab_cb
     // printf("Call OK\n");
   }
   if(stream != NULL){
@@ -76,15 +59,27 @@ static void pp_release(struct ixev_ctx *ctx)
   // mempool_free(&pp_conn_pool, conn);
 }
 
+void ixuv__handle_uds_events(uv_loop_t* loop, uint32_t events, int fd );
+
+static __thread uv_loop_t* ixuv__static_loop;
+
+void ixuv__uds_handler(uint32_t events, int fd ) {
+  ixuv__handle_uds_events(ixuv__static_loop, events, fd);
+}
+
+
+
 struct ixev_conn_ops ixuv_conn_ops = {
   .accept   = &ixuv__accept,
-  .release  = &pp_release,
+  .release  = &ixuv_release,
+  .uds_handler = &ixuv__uds_handler,
 };
 
 
+int ixuv__init(uv_loop_t* loop){
 
-int uv_loop_init(uv_loop_t* loop) {
-  int err;
+  ixuv__static_loop = loop;
+
 
   ixev_init(&ixuv_conn_ops);
 
@@ -92,9 +87,19 @@ int uv_loop_init(uv_loop_t* loop) {
 
   ret = ixev_init_thread();
   if (ret) {
-    printf("unable to init IXEV\n");
+    printf("unable to init IXUV\n");
     return -1;
   };
+
+}
+
+int uv_loop_init(uv_loop_t* loop) {
+  int err;
+
+  err = ixuv__init(loop);
+  if(err){
+    return;
+  }
 
 
   uv__signal_global_once_init();

@@ -92,6 +92,7 @@ uint64_t uv_hrtime(void) {
 
 
 void uv_close(uv_handle_t* handle, uv_close_cb close_cb) {
+  // printf("        UV CLOSE CALLED\n");
   assert(!(handle->flags & (UV_CLOSING | UV_CLOSED)));
 
   handle->flags |= UV_CLOSING;
@@ -108,6 +109,7 @@ void uv_close(uv_handle_t* handle, uv_close_cb close_cb) {
 
   case UV_TCP:
     uv__tcp_close((uv_tcp_t*)handle);
+    return; // dont close until were done from IX
     break;
 
   case UV_UDP:
@@ -314,22 +316,32 @@ int uv_run(uv_loop_t* loop, uv_run_mode mode) {
   while (r != 0 && loop->stop_flag == 0) {
     uv__update_time(loop);
     uv__run_timers(loop);
+    // printf("before pending\n");
     ran_pending = uv__run_pending(loop);
+    // printf("after pending\n");
     uv__run_idle(loop);
     uv__run_prepare(loop);
+    // printf("before timeout\n");
 
     timeout = 0;
     if ((mode == UV_RUN_ONCE && !ran_pending) || mode == UV_RUN_DEFAULT)
       timeout = uv_backend_timeout(loop);
+    if( -1 == timeout) {
+      timeout = 200; //avoid infinite timeout for now
+    }
+
 
     // printf("uv_poll\n");
-    //uv__io_poll(loop, timeout);
-    //printf("Polling\n");
-    ixev_wait();
-    //printf("After IXEV wait\n");
+     uv__io_poll(loop, timeout); //calling ixev wait instead of epoll in there
+    // printf("Polling\n");
+    // ixev_wait();
+   // printf("After IXEV wait\n");
+
     //ix_poll();
     uv__run_check(loop);
+    // printf("before closing\n");
     uv__run_closing_handles(loop);
+    // printf("after closing\n");
 
     if (mode == UV_RUN_ONCE) {
       /* UV_RUN_ONCE implies forward progress: at least one callback must have
@@ -810,6 +822,7 @@ void uv__io_start(uv_loop_t* loop, uv__io_t* w, unsigned int events) {
     QUEUE_INSERT_TAIL(&loop->watcher_queue, &w->watcher_queue);
 
   if (loop->watchers[w->fd] == NULL) {
+    printf("[uv__io_init] registered watcher for fd %d \n", w->fd);
     loop->watchers[w->fd] = w;
     loop->nfds++;
   }

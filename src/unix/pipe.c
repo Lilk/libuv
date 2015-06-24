@@ -171,6 +171,7 @@ void uv_pipe_connect(uv_connect_t* req,
                 (struct sockaddr*)&saddr, sizeof saddr);
   }
   while (r == -1 && errno == EINTR);
+  // printf("Connect returned %d\n", r);
 
   if (r == -1 && errno != EINPROGRESS) {
     err = -errno;

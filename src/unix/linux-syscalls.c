@@ -26,6 +26,9 @@
 #include <sys/types.h>
 #include <errno.h>
 
+#include <sys/epoll.h>
+#include "ix.h"
+
 #if defined(__has_feature)
 # if __has_feature(memory_sanitizer)
 #  define MSAN_ACTIVE 1
@@ -286,6 +289,7 @@ int uv__eventfd2(unsigned int count, int flags) {
 
 
 int uv__epoll_create(int size) {
+  return -1;
 #if defined(__NR_epoll_create)
   return syscall(__NR_epoll_create, size);
 #else
@@ -295,6 +299,7 @@ int uv__epoll_create(int size) {
 
 
 int uv__epoll_create1(int flags) {
+  return -1;
 #if defined(__NR_epoll_create1)
   return syscall(__NR_epoll_create1, flags);
 #else
@@ -304,6 +309,8 @@ int uv__epoll_create1(int flags) {
 
 
 int uv__epoll_ctl(int epfd, int op, int fd, struct uv__epoll_event* events) {
+  return ix_uds_ctl(fd, op, (struct epoll_event*) events);
+
 #if defined(__NR_epoll_ctl)
   return syscall(__NR_epoll_ctl, epfd, op, fd, events);
 #else

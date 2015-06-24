@@ -138,32 +138,182 @@ void uv__platform_invalidate_fd(uv_loop_t* loop, int fd) {
     uv__epoll_ctl(loop->backend_fd, UV__EPOLL_CTL_DEL, fd, &dummy);
   }
 }
+// void ixuv__handle_uds_events(uv_loop_t* loop, struct epoll_event* events, int nfds ) {
+//     printf("LOG: got callback that stuff happened on UDS\n");
+//     struct epoll_event* pe;
+//     uv__io_t* w;
+//     int i;
+//     int fd;
+//     int nevents;
+
+//     nevents = 0;
+//     assert(loop->watchers != NULL);
+//     loop->watchers[loop->nwatchers] = (void*) events;
+//     loop->watchers[loop->nwatchers + 1] = (void*) (uintptr_t) nfds;
+//     for (i = 0; i < nfds; i++) {
+//       pe = events + i;
+//       fd = pe->data.fd;
+
+//       /* Skip invalidated events, see uv__platform_invalidate_fd */
+//       if (fd == -1)
+//         continue;
+
+//       assert(fd >= 0);
+//       assert((unsigned) fd < loop->nwatchers);
+
+//       w = loop->watchers[fd];
+
+//       if (w == NULL) {
+//         /* File descriptor that we've stopped watching, disarm it.
+//          *
+//          * Ignore all errors because we may be racing with another thread
+//          * when the file descriptor is closed.
+//          */
+//         uv__epoll_ctl(loop->backend_fd, UV__EPOLL_CTL_DEL, fd, pe);
+//         continue;
+//       }
+
+//       /* Give users only events they're interested in. Prevents spurious
+//        * callbacks when previous callback invocation in this loop has stopped
+//        * the current watcher. Also, filters out events that users has not
+//        * requested us to watch.
+//        */
+//       pe->events &= w->pevents | UV__POLLERR | UV__POLLHUP;
+
+//        Work around an epoll quirk where it sometimes reports just the
+//        * EPOLLERR or EPOLLHUP event.  In order to force the event loop to
+//        * move forward, we merge in the read/write events that the watcher
+//        * is interested in; uv__read() and uv__write() will then deal with
+//        * the error or hangup in the usual fashion.
+//        *
+//        * Note to self: happens when epoll reports EPOLLIN|EPOLLHUP, the user
+//        * reads the available data, calls uv_read_stop(), then sometime later
+//        * calls uv_read_start() again.  By then, libuv has forgotten about the
+//        * hangup and the kernel won't report EPOLLIN again because there's
+//        * nothing left to read.  If anything, libuv is to blame here.  The
+//        * current hack is just a quick bandaid; to properly fix it, libuv
+//        * needs to remember the error/hangup event.  We should get that for
+//        * free when we switch over to edge-triggered I/O.
+       
+//       if (pe->events == UV__EPOLLERR || pe->events == UV__EPOLLHUP)
+//         pe->events |= w->pevents & (UV__EPOLLIN | UV__EPOLLOUT);
+
+//       if (pe->events != 0) {
+//         w->cb(loop, w, pe->events);
+//         nevents++;
+//       }
+
+//       if (w != loop->watchers[fd])
+//         continue;  /* Disabled by callback. */
+//        /* IX UDS operates in oneshot mode, rearm timer on next run. */
+//       if (w->pevents != 0 && QUEUE_EMPTY(&w->watcher_queue))
+//         QUEUE_INSERT_TAIL(&loop->watcher_queue, &w->watcher_queue);
+//     }
+//     loop->watchers[loop->nwatchers] = NULL;
+//     loop->watchers[loop->nwatchers + 1] = NULL;
+// }
+
+// void ixuv_uds_callback(epoll_event* events, int nfds, void* data ){
+//   handle_uds_events( (uv_loop_t*)data, events, nfds)
+// }
+
+void ixuv__handle_uds_events(uv_loop_t* loop, int32_t events, int fd ) {
+    struct epoll_event event;
+    event.events = events;
+    event.data.fd = fd;
+    struct epoll_event* pe = &event;
+    uv__io_t* w;
+  
+
+    // nevents = 0;
+    assert(loop->watchers != NULL);
+    // loop->watchers[loop->nwatchers] = (void*) events;
+    // loop->watchers[loop->nwatchers + 1] = (void*) (uintptr_t) nfds;
+    if ( fd != -1){   /* Skip invalidated events, see uv__platform_invalidate_fd */
+      assert(fd >= 0);
+      assert((unsigned) fd < loop->nwatchers);
+
+      w = loop->watchers[fd];
+
+      if (w == NULL) {
+        /* File descriptor that we've stopped watching, disarm it.
+         *
+         * Ignore all errors because we may be racing with another thread
+         * when the file descriptor is closed.
+         */
+        uv__epoll_ctl(loop->backend_fd, UV__EPOLL_CTL_DEL, fd, pe);
+
+      } else {
+
+        /* Give users only §r. Also, filters out events that users has not
+         * requested us to watch.
+         */
+        pe->events &= w->pevents | UV__POLLERR | UV__POLLHUP;
+
+        /* Work around an epoll quirk where it sometimes reports just the
+         * EPOLLERR or EPOLLHUP event.  In order to force the event loop to
+         * move forward, we merge in the read/write events that the watcher
+         * is interested in; uv__read() and uv__write() will then deal with
+         * the error or hangup in the usual fashion.
+         *
+         * Note to self: happens when epoll reports EPOLLIN|EPOLLHUP, the user
+         * reads the available data, calls uv_read_stop(), then sometime later
+         * calls uv_read_start() again.  By then, libuv has forgotten about the
+         * hangup and the kernel won't report EPOLLIN again because there's
+         * nothing left to read.  If anything, libuv is to blame here.  The
+         * current hack is just a quick bandaid; to properly fix it, libuv
+         * needs to remember the error/hangup event.  We should get that for
+         * free when we switch over to edge-triggered I/O.
+         */
+        if (pe->events == UV__EPOLLERR || pe->events == UV__EPOLLHUP)
+          pe->events |= w->pevents & (UV__EPOLLIN | UV__EPOLLOUT);
+
+        if (pe->events != 0) {
+          w->cb(loop, w, pe->events);
+          // nevents++;
+        }
+
+        if (w == loop->watchers[fd]) {  /*  NOT Disabled by callback. */
+           
+           /* IX UDS operates in oneshot mode, rearm timer on next run. */
+          if (w->pevents != 0 && QUEUE_EMPTY(&w->watcher_queue))
+            QUEUE_INSERT_TAIL(&loop->watcher_queue, &w->watcher_queue);
+        }
+      }
+    }
+    loop->watchers[loop->nwatchers] = NULL;
+    loop->watchers[loop->nwatchers + 1] = NULL;
+}
+
 
 
 void uv__io_poll(uv_loop_t* loop, int timeout) {
-  printf("linux/core uv io poll: %d\n", timeout);
-  static int no_epoll_pwait;
-  static int no_epoll_wait;
-  struct uv__epoll_event events[1024];
-  struct uv__epoll_event* pe;
+  // printf("linux/core uv io poll: %d\n", timeout);
+  // static int no_epoll_pwait;
+  // static int no_epoll_wait;
+  // struct uv__epoll_event events[1024];
+  // struct uv__epoll_event* pe;
   struct uv__epoll_event e;
   QUEUE* q;
   uv__io_t* w;
-  sigset_t sigset;
-  uint64_t sigmask;
-  uint64_t base;
-  uint64_t diff;
-  int nevents;
-  int count;
-  int nfds;
-  int fd;
+  // sigset_t sigset;
+  // uint64_t sigmask;
+  // uint64_t base;
+  // uint64_t diff;
+  // int nevents;
+  // int count;
+  // int nfds;
+  // int fd;
   int op;
-  int i;
+  // int i;
 
-  if (loop->nfds == 0) {
-    assert(QUEUE_EMPTY(&loop->watcher_queue));
-    return;
-  }
+  // if (loop->nfds == 0) {
+  //   assert(QUEUE_EMPTY(&loop->watcher_queue));
+  //   return;
+  // }
+
+    // printf("linux/core uv io poll: %d\n", timeout);
+
 
   while (!QUEUE_EMPTY(&loop->watcher_queue)) {
     q = QUEUE_HEAD(&loop->watcher_queue);
@@ -183,6 +333,7 @@ void uv__io_poll(uv_loop_t* loop, int timeout) {
     else
       op = UV__EPOLL_CTL_MOD;
 
+
     /* XXX Future optimization: do EPOLL_CTL_MOD lazily if we stop watching
      * events, skip the syscall and squelch the events after epoll_wait().
      */
@@ -191,27 +342,31 @@ void uv__io_poll(uv_loop_t* loop, int timeout) {
         abort();
 
       assert(op == UV__EPOLL_CTL_ADD);
-
       /* We've reactivated a file descriptor that's been watched before. */
       if (uv__epoll_ctl(loop->backend_fd, UV__EPOLL_CTL_MOD, w->fd, &e))
         abort();
     }
-
     w->events = w->pevents;
   }
+    // printf("linux/core uv io poll: %d\n", timeout);
 
-  sigmask = 0;
-  if (loop->flags & UV_LOOP_BLOCK_SIGPROF) {
-    sigemptyset(&sigset);
-    sigaddset(&sigset, SIGPROF);
-    sigmask |= 1 << (SIGPROF - 1);
-  }
 
-  assert(timeout >= -1);
-  base = loop->time;
-  count = 48; /* Benchmarks suggest this gives the best throughput. */
+  // sigmask = 0;
+  // if (loop->flags & UV_LOOP_BLOCK_SIGPROF) {
+  //   sigemptyset(&sigset);
+  //   sigaddset(&sigset, SIGPROF);
+  //   sigmask |= 1 << (SIGPROF - 1);
+  // }
+    
 
-  for (;;) {
+
+  // assert(timeout >= -1);
+  // base = loop->time;
+  // count = 48; /* Benchmarks suggest this gives the best throughput. */
+
+  //for (;;) // probaly cant have this due to correctnes of watcher queue, since IX does not have a timeout in the poll
+  {
+    /*
     if (sigmask != 0 && no_epoll_pwait != 0)
       if (pthread_sigmask(SIG_BLOCK, &sigset, NULL))
         abort();
@@ -232,10 +387,12 @@ void uv__io_poll(uv_loop_t* loop, int timeout) {
       if (nfds == -1 && errno == ENOSYS)
         no_epoll_wait = 1;
     }
+    */
+    ixev_wait(); // replaces epoll_wait()
 
-    if (sigmask != 0 && no_epoll_pwait != 0)
-      if (pthread_sigmask(SIG_UNBLOCK, &sigset, NULL))
-        abort();
+    // if (sigmask != 0 && no_epoll_pwait != 0)
+    //   if (pthread_sigmask(SIG_UNBLOCK, &sigset, NULL))
+    //     abort();
 
     /* Update loop->time unconditionally. It's tempting to skip the update when
      * timeout == 0 (i.e. non-blocking poll) but there is no guarantee that the
@@ -243,115 +400,58 @@ void uv__io_poll(uv_loop_t* loop, int timeout) {
      */
     SAVE_ERRNO(uv__update_time(loop));
 
-    if (nfds == 0) {
-      assert(timeout != -1);
-      return;
-    }
 
-    if (nfds == -1) {
-      if (errno == ENOSYS) {
-        /* epoll_wait() or epoll_pwait() failed, try the other system call. */
-        assert(no_epoll_wait == 0 || no_epoll_pwait == 0);
-        continue;
-      }
+    // if (nfds == 0) {
+    //   assert(timeout != -1);
+    //   return;
+    // }
 
-      if (errno != EINTR)
-        abort();
+    // if (nfds == -1) {
+    //   if (errno == ENOSYS) {
+    //     /* epoll_wait() or epoll_pwait() failed, try the other system call. */
+    //     assert(no_epoll_wait == 0 || no_epoll_pwait == 0);
+    //     continue;
+    //   }
 
-      if (timeout == -1)
-        continue;
+    //   if (errno != EINTR)
+    //     abort();
 
-      if (timeout == 0)
-        return;
+    //   if (timeout == -1)
+    //     continue;
 
-      /* Interrupted by a signal. Update timeout and poll again. */
-      goto update_timeout;
-    }
+    //   if (timeout == 0)
+    //     return;
 
-    nevents = 0;
+    //   /* Interrupted by a signal. Update timeout and poll again. */
+    //   goto update_timeout;
+    // }
+    
 
-    assert(loop->watchers != NULL);
-    loop->watchers[loop->nwatchers] = (void*) events;
-    loop->watchers[loop->nwatchers + 1] = (void*) (uintptr_t) nfds;
-    for (i = 0; i < nfds; i++) {
-      pe = events + i;
-      fd = pe->data;
+ 
+    //TODO: If ixev_wait() and libic_handle events would return number of events processed...
+    // if (nevents != 0) {
+    //   if (nfds == ARRAY_SIZE(events) && --count != 0) {
+    //     /* Poll for more events but don't block this time. */
+    //     timeout = 0;
+    //     continue;
+    //   }
+    //   return;
+    // }
 
-      /* Skip invalidated events, see uv__platform_invalidate_fd */
-      if (fd == -1)
-        continue;
+//     if (timeout == 0)
+//       return;
 
-      assert(fd >= 0);
-      assert((unsigned) fd < loop->nwatchers);
+//     if (timeout == -1)
+//       continue;
 
-      w = loop->watchers[fd];
+// update_timeout:
+//     assert(timeout > 0);
 
-      if (w == NULL) {
-        /* File descriptor that we've stopped watching, disarm it.
-         *
-         * Ignore all errors because we may be racing with another thread
-         * when the file descriptor is closed.
-         */
-        uv__epoll_ctl(loop->backend_fd, UV__EPOLL_CTL_DEL, fd, pe);
-        continue;
-      }
+//     diff = loop->time - base;
+//     if (diff >= (uint64_t) timeout)
+//       return;
 
-      /* Give users only events they're interested in. Prevents spurious
-       * callbacks when previous callback invocation in this loop has stopped
-       * the current watcher. Also, filters out events that users has not
-       * requested us to watch.
-       */
-      pe->events &= w->pevents | UV__POLLERR | UV__POLLHUP;
-
-      /* Work around an epoll quirk where it sometimes reports just the
-       * EPOLLERR or EPOLLHUP event.  In order to force the event loop to
-       * move forward, we merge in the read/write events that the watcher
-       * is interested in; uv__read() and uv__write() will then deal with
-       * the error or hangup in the usual fashion.
-       *
-       * Note to self: happens when epoll reports EPOLLIN|EPOLLHUP, the user
-       * reads the available data, calls uv_read_stop(), then sometime later
-       * calls uv_read_start() again.  By then, libuv has forgotten about the
-       * hangup and the kernel won't report EPOLLIN again because there's
-       * nothing left to read.  If anything, libuv is to blame here.  The
-       * current hack is just a quick bandaid; to properly fix it, libuv
-       * needs to remember the error/hangup event.  We should get that for
-       * free when we switch over to edge-triggered I/O.
-       */
-      if (pe->events == UV__EPOLLERR || pe->events == UV__EPOLLHUP)
-        pe->events |= w->pevents & (UV__EPOLLIN | UV__EPOLLOUT);
-
-      if (pe->events != 0) {
-        w->cb(loop, w, pe->events);
-        nevents++;
-      }
-    }
-    loop->watchers[loop->nwatchers] = NULL;
-    loop->watchers[loop->nwatchers + 1] = NULL;
-
-    if (nevents != 0) {
-      if (nfds == ARRAY_SIZE(events) && --count != 0) {
-        /* Poll for more events but don't block this time. */
-        timeout = 0;
-        continue;
-      }
-      return;
-    }
-
-    if (timeout == 0)
-      return;
-
-    if (timeout == -1)
-      continue;
-
-update_timeout:
-    assert(timeout > 0);
-
-    diff = loop->time - base;
-    if (diff >= (uint64_t) timeout)
-      return;
-
-    timeout -= diff;
+//     timeout -= diff;
   }
 }
 

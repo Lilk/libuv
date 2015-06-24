@@ -68,6 +68,15 @@ static void uv__write_callbacks(uv_stream_t* stream);
 static size_t uv__write_req_size(uv_write_t* req);
 
 
+static void ixuv__write_callbacks_io(uv_loop_t* loop, uv__io_t* w, unsigned int events) {
+  uv_stream_t* stream;
+
+  stream = container_of(w, uv_stream_t, io_watcher);
+  // printf("IXUV write callbacks\n");
+  uv__write_callbacks(stream);
+
+}
+
 void uv__stream_init(uv_loop_t* loop,
                      uv_stream_t* stream,
                      uv_handle_type type) {
@@ -102,7 +111,8 @@ void uv__stream_init(uv_loop_t* loop,
   stream->select = NULL;
 #endif /* defined(__APPLE_) */
 
-  uv__io_init(&stream->io_watcher, uv__stream_io, -1);
+  if(stream->type == UV_TCP) uv__io_init(&stream->io_watcher, ixuv__write_callbacks_io, -1);
+  else uv__io_init(&stream->io_watcher, uv__stream_io, -1);
 }
 
 
@@ -444,7 +454,6 @@ void uv__stream_destroy(uv_stream_t* stream) {
   uv__write_callbacks(stream);
 
   if (stream->shutdown_req) {
-    // printf("shutdown req\n");
     /* The ECANCELED error code is a lie, the shutdown(2) syscall is a
      * fait accompli at this point. Maybe we should revisit this in v0.11.
      * A possible reason for leaving it unchanged is that it informs the
@@ -455,7 +464,7 @@ void uv__stream_destroy(uv_stream_t* stream) {
     stream->shutdown_req = NULL;
   }
 
-  //assert(stream->write_queue_size == 0);
+  assert(stream->write_queue_size == 0);
 }
 
 
@@ -502,6 +511,8 @@ static int uv__emfile_trick(uv_loop_t* loop, int accept_fd) {
 
 
 void uv__server_io(uv_loop_t* loop, uv__io_t* w, unsigned int events) {
+  // printf("UV server IO\n");
+  fflush(stdout);
   uv_stream_t* stream;
   int err;
 
@@ -660,7 +671,7 @@ int uv_listen(uv_stream_t* stream, int backlog, uv_connection_cb cb) {
   if (err == 0)
     uv__handle_start(stream);
 
-  printf("uv_listen - returning %d\n", err);
+  // printf("uv_listen - returning %d\n", err);
   return err;
 }
 
@@ -710,6 +721,7 @@ static size_t uv__write_req_size(uv_write_t* req) {
 
 
 void uv__write_req_finish(uv_write_t* req) { //modified from static
+  // printf("write req Finish\n");
   uv_stream_t* stream = req->handle;
 
   /* Pop the req off tcp->write_queue. */
@@ -930,10 +942,11 @@ static void uv__write_callbacks(uv_stream_t* stream) {
     req = QUEUE_DATA(q, uv_write_t, queue);
     QUEUE_REMOVE(q);
     uv__req_unregister(stream->loop, req);
-    // printf("write callback %p (%p)\n", req, stream);
+    // printf("uv__write callback %p (%p)\n", req, stream);
     if (req->bufs != NULL) {
       // printf("bufs != NULL\n");
       stream->write_queue_size -= uv__write_req_size(req);
+      // printf("after counting\n");
       if (req->bufs != req->bufsml)
         free(req->bufs);
       req->bufs = NULL;
@@ -946,6 +959,7 @@ static void uv__write_callbacks(uv_stream_t* stream) {
   }
   // printf("Asserting of empty queue\n");
   assert(QUEUE_EMPTY(&stream->write_completed_queue));
+
 }
 
 
@@ -1230,6 +1244,7 @@ int uv_shutdown(uv_shutdown_t* req, uv_stream_t* stream, uv_shutdown_cb cb) {
 
 
 static void uv__stream_io(uv_loop_t* loop, uv__io_t* w, unsigned int events) {
+  // printf("Stream IO\n");
   uv_stream_t* stream;
 
   stream = container_of(w, uv_stream_t, io_watcher);
@@ -1594,14 +1609,14 @@ void uv__stream_close(uv_stream_t* handle) {
 #endif /* defined(__APPLE__) */
   if(handle->type == UV_TCP){ //For IX
       // printf("Closing IX:TCP\n");
-      if( ((uv_tcp_t*) handle)->_ixev_ctx != NULL){
-       ixev_close(((uv_tcp_t*) handle)->_ixev_ctx);
-       ((uv_tcp_t*) handle)->_ixev_ctx = NULL;
-      }
-      // ix_flush();
-      // printf("after\n");
-      handle->io_watcher.fd = -1;
-      uv__handle_stop(handle);
+      // if( ((uv_tcp_t*) handle)->_ixev_ctx != NULL){
+      //  ixev_close(((uv_tcp_t*) handle)->_ixev_ctx);
+      //  ((uv_tcp_t*) handle)->_ixev_ctx = NULL;
+      // }
+      // // ix_flush();
+      // // printf("after\n");
+      // handle->io_watcher.fd = -1;
+      // uv__handle_stop(handle);
       //uv__io_stop called by read stop will assign to w->fd which is dangerous as ix flow might overlap etc..
       return;
   }
