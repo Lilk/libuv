@@ -132,7 +132,7 @@ void uv__fs_scandir_cleanup(uv_fs_t* req);
   do {                                                                        \
     assert(uv__has_active_reqs(loop));                                        \
     QUEUE_REMOVE(&(req)->active_queue);                                       \
-  }                             §                                              \
+  }                                                                           \
   while (0)
 
 #define uv__has_active_handles(loop)                                          \
