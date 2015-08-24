@@ -62,12 +62,11 @@ static void ixuv_release(struct ixev_ctx *ctx)
 
 void ixuv__handle_uds_events(uv_loop_t* loop, uint32_t events, int fd );
 
-static __thread uv_loop_t* ixuv__static_loop;
+static __thread uv_loop_t* ixuv__static_loop = NULL;
 
 void ixuv__uds_handler(uint32_t events, int fd ) {
   ixuv__handle_uds_events(ixuv__static_loop, events, fd);
 }
-
 
 
 struct ixev_conn_ops ixuv_conn_ops = {
@@ -77,12 +76,14 @@ struct ixev_conn_ops ixuv_conn_ops = {
 };
 
 
+
+
 int ixuv__init(uv_loop_t* loop){
 
-  ixuv__static_loop = loop;
-
-
-  ixev_init(&ixuv_conn_ops);
+  if ( ixuv__static_loop == NULL ) {
+    ixuv__static_loop = loop;
+    ixev_init(&ixuv_conn_ops);
+  }
 
   int ret;
 
