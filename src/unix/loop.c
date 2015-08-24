@@ -37,7 +37,7 @@
 
 static void ixuv_release(struct ixev_ctx *ctx)
 {
-  printf("Need to implement a nice release method: %p (%p)\n", ctx, ctx->user_data);
+  // printf("Need to implement a nice release method: %p (%p)\n", ctx, ctx->user_data);
   // struct pp_conn *conn = container_of(ctx, struct pp_conn, ctx);
   uv_tcp_t* stream = (uv_tcp_t*) ctx->user_data; 
   ctx->user_data = (int64_t) NULL;
