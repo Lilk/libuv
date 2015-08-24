@@ -29,7 +29,6 @@
 
 #include <stdio.h>
 
-//#include "ixev.h"
 
  #include <netinet/in.h>
 
@@ -38,7 +37,6 @@
 
 
 int uv_tcp_init(uv_loop_t* loop, uv_tcp_t* tcp) {
-  // printf("Initiating stream %p\n", tcp);
   uv__stream_init(loop, (uv_stream_t*)tcp, UV_TCP);
   tcp->_ixev_ctx = NULL;
   tcp->pending_ctx_head = NULL;
@@ -46,15 +44,30 @@ int uv_tcp_init(uv_loop_t* loop, uv_tcp_t* tcp) {
 }
 
 static uv_tcp_t* singleton_listening_socket = NULL;
+static unsigned long singleton_listening_socket_addr = NULL;
+static unsigned short singleton_listening_socket_port = NULL;
 
+
+
+/*
+ * Puts a binding from an address to a server handle.
+ */
 void ixuv__put_binding(unsigned long addr, unsigned short port, uv_tcp_t* tcp){
+  // printf("Put %ld %d\n", addr, port);
+  singleton_listening_socket_addr = addr;
+  singleton_listening_socket_port = port;
   singleton_listening_socket = tcp;
 }
+/*
+ * Gets the server handle for an address.
+ */
 uv_tcp_t* ixuv__get_binding(unsigned long addr, unsigned short port){
-  // printf("Binding received\n");
+  // if( addr != singleton_listening_socket_addr ||  port != singleton_listening_socket_port) return NULL;
   return singleton_listening_socket;
 }
 
+
+/* Enqueue an incoming ixev_ctx to a server handle */
 void ixuv__enqueue_ctx(uv_tcp_t* tcp, ixev_ctx* ctx){
   ctx_post* post = (ctx_post*) malloc(sizeof(ctx_post));
   post->_ixev_ctx = ctx;
@@ -67,18 +80,16 @@ void ixuv__enqueue_ctx(uv_tcp_t* tcp, ixev_ctx* ctx){
   post->next = NULL;
 
 }
+/* Dequeue an incoming ixev_ctx from a server handle */
 ixev_ctx* ixuv__dequeue_ctx(uv_tcp_t* tcp){
   if(tcp->pending_ctx_head == NULL){
     return NULL;
   }
   ctx_post* post = tcp->pending_ctx_head;
   ixev_ctx* ixev_ctx_ = post -> _ixev_ctx; 
-  // if (  tcp->pending_ctx_head ==  tcp->pending_ctx_tail) { 
-  //    tcp->pending_ctx_head = NULL;
-  //    tcp->pending_ctx_tail = NULL;
-  // } else {
-     tcp->pending_ctx_head = post->next; //Maybe this line suffices
-  // }
+
+  tcp->pending_ctx_head = post->next; 
+
   free(post);
   return ixev_ctx_;
 }
@@ -92,25 +103,22 @@ static void ixuv__multiplex_handler(struct ixev_ctx *ctx, unsigned int reason) {
       fprintf(stderr, "Null context from ctx handler - in need of a queue?\n");
       return;
     }
-    if(reason == IXEVIN && stream->read_cb != NULL){
+    if(reason == IXEVIN && stream->read_cb != NULL && stream->flags & UV_STREAM_READING){
         uv_buf_t buf;
         stream->alloc_cb((uv_handle_t*)stream, 64 * 1024, &buf);
-       // printf("lil\n");
         int read = ixev_recv(ctx, buf.base, buf.len);
-        // printf("Read data: (%d)\n========\n%.*s\n==========\n", read, read, buf.base);
-        //printf("read %d\n", read);
-        // int len = 43;
-        // void* zc_buf = ixev_recv_zc(ctx,  len);
-        // printf("pointer = %p\n", zc_buf);
-        // buf.base = zc_buf;
-        // buf.len = len-1;
-        // if(stream->read_cb != NULL){ // @TODO: Maybe this should enclose the read from ix as well.
-       // printf("recv\n");
-        stream->read_cb((uv_stream_t*)stream, read, &buf);
-        // printf("after cb\n");
-        // }
+       
+        stream->read_cb((uv_stream_t*)stream, read, &buf);     
     } if (  reason == IXEVHUP){
-      printf("connection died\n");
+        //fprintf(stderr, "connection died\n");
+        /* Possible place to store state in connection that we lost the connection, to optimise shutdown.
+            Note that int ixev_event_mask = IXEVIN; // IXEVIN|IXEVOUT|IXEVHUP in 
+            struct ixev_ctx *ixuv__accept(struct ip_tuple *id) needs to be set to forward such events.
+         */
+    } if ( reason == IXEVOUT){
+        /* Here would be the place to call the write callback if 
+            the callback should be called after IX processing rather
+            than after the uv layer has passed the callback to IX.  */
     }
 }
 
@@ -120,42 +128,38 @@ struct ixev_ctx *ixuv__accept(struct ip_tuple *id)
   struct in_addr src, dst;
   src.s_addr = id->src_ip;
   dst.s_addr = id->dst_ip;
-  // printf("Got conn from: %s:%d to %s:%d\n", inet_ntoa(src), id->src_port, inet_ntoa(dst), id->dst_port);
-  /* NOTE: we accept everything right now, did we want a port? */
   
-  //struct pp_conn *conn = mempool_alloc(&pp_conn_pool);
 
   unsigned long addr = id->src_ip; // ixev returns this host as src and remote as dst
   unsigned short port = id->src_port;
+
+  // printf("looking up %ld %d\n", addr, port);
+
   uv_tcp_t* listening_socket = ixuv__get_binding(addr, port);
   if (listening_socket==NULL)
   {
-    printf("listening_socket null\n");
+    fprintf(stderr, "ixuv__accept: listening_server null\n");
     return NULL; //No listening socket: do not accept connections.
   }
+   if(listening_socket->connection_cb == NULL){ //Maybe while pending_ctx_head != NULL, but would go into infinite loop if user supplies method that does not poll queue. (Calls accept)
+    fprintf(stderr, "ixuv__accept: Bound listening server has no connection callback\n");
+    return NULL;
+  }
 
-
-  // printf("Allocation IX context\n");
   ixev_ctx* ctx = (ixev_ctx*) malloc(sizeof(ixev_ctx)); // @TODO: Implement mempool allocation
   if (!ctx){
     printf("Returning NULL\n");
     return NULL;
   }
-  // printf("Context allocated\n");
 
   ixev_ctx_init(ctx);
   ctx->user_data = 0;
-  ixev_set_handler(ctx, IXEVIN|IXEVOUT, &ixuv__multiplex_handler); //Handles both in and out events, to avoid constant reregistration.
-  // printf("Before enqueue\n");
+  int ixev_event_mask = IXEVIN; // IXEVIN|IXEVOUT|IXEVHUP to get all callbacks to static void ixuv__multiplex_handler(struct ixev_ctx *ctx, unsigned int reason)
+  ixev_set_handler(ctx, ixev_event_mask, &ixuv__multiplex_handler); //Handles both in and out events, to avoid constant reregistration.
   ixuv__enqueue_ctx(listening_socket, ctx);
-  // printf("Enqueued new ixev_ctx: %p\n", ctx);
+  
+  listening_socket->connection_cb((uv_stream_t*)listening_socket, 0); //unsure what errors could have occured
 
-  if(listening_socket->connection_cb != NULL){ //Maybe while pending_ctx_head != NULL, but would go into infinite loop if user supplies method that does not poll queue. (Calls accept)
-    // printf("Calling connection callback\n");
-    listening_socket->connection_cb((uv_stream_t*)listening_socket, 0); //unsure what errors could have occured, also right way to have this?
-  }
-
-  // printf("returning context to ix\n");
   return ctx;
 }
 
@@ -167,7 +171,7 @@ int uv__tcp_accept(uv_tcp_t* server, uv_tcp_t* client){
     return -EAGAIN;
   }
   client->_ixev_ctx = ctx;
-  client->io_watcher.fd = ctx; //SUPER HACK TO AVOID asserts, be aware!!
+  client->io_watcher.fd = ctx; //SUPER HACK TO AVOID asserts, be aware, here be dragons!!
   ctx->user_data = (unsigned long) client;
   // printf("Putting uv ctx %p as user_data for ctx %p\n", client, ctx);
   return 0;
@@ -175,74 +179,12 @@ int uv__tcp_accept(uv_tcp_t* server, uv_tcp_t* client){
 
 void uv__write_req_finish(uv_write_t* req);
 
-// int uv__tcp_write(uv_write_t* req,
-//              uv_tcp_t* handle,
-//              const uv_buf_t bufs[],
-//              unsigned int nbufs,
-//              uv_write_cb cb){
-//   uv_tcp_t* stream = handle; //alias
-
-
-//   int error = 0;
-//   unsigned int i;
-//   // printf("Writing to stream: %p nbufs %d\n", handle, nbufs);
-//   if(handle->_ixev_ctx == NULL){
-//     printf("IXEV ctx null - aborting write");
-//     return -1; //TODO: FIX better error code
-//   }
-//   for (i = 0; i < nbufs && error >= 0; ++i)
-//   {
-//     // printf("Writing buffer %d;\n%s\n-------------\n", i, bufs[i].base);
-//     error = ixev_send( (struct ixev_ctx *)handle->_ixev_ctx, (void*) bufs[i].base, (size_t) bufs[i].len); 
-//     if(error < 0) printf("Error: %d\n", error) ; 
-//   }
-  
-//   req->cb = cb;
-//   req->handle = (uv_stream_t*) handle;
-//   req->error = error < 0? error: 0; 
-//   req->send_handle = NULL;
-//   QUEUE_INIT(&req->queue);
-
-
-// /** Taken from uv_write2 */
-//   uv__req_init(stream->loop, req, UV_WRITE);
-//   req->cb = cb;
-//   req->handle = handle;
-//   req->error = 0;
-//   if(error < 0) req->error = error;
-//   req->send_handle = NULL;
-//   QUEUE_INIT(&req->queue);
-
-//   req->bufs = req->bufsml;
-//   if (nbufs > ARRAY_SIZE(req->bufsml))
-//     req->bufs = malloc(nbufs * sizeof(bufs[0]));
-
-//   if (req->bufs == NULL)
-//     return -ENOMEM;
-
-//   memcpy(req->bufs, bufs, nbufs * sizeof(bufs[0]));
-//   req->nbufs = nbufs;
-//   req->write_index = 0;
-//   // stream->write_queue_size += uv__count_bufs(bufs, nbufs);
-
-//   /* Append the request to write_queue. */
-//   //QUEUE_INSERT_TAIL(&stream->write_queue, &req->queue);
-// /** Taken from uv_write2 */
-
-
-
-//   //if(cb != NULL){
-// //    cb(req, req->error); //
-//  // }
-//   uv__write_req_finish(req);
-//   return 0;
-// }
-
 
 struct ixuv_ref {
   struct ixev_ref _ixev_ref;
   uv_tcp_t* _stream;
   uv_write_t* _req;
+  int _wq_diff;
 };
 
 
@@ -257,12 +199,14 @@ static void ixuv__write_complete_callback(struct ixev_ref *ixev_ref_ptr){
    uv_tcp_t* stream = ref->_stream;
    uv_write_t* req = ref->_req;
 
-   stream->write_queue_size -= 1;
-   QUEUE_INSERT_TAIL(&stream->write_completed_queue, &req->queue);
-   uv__io_feed(stream->loop, &stream->io_watcher);
+   stream->write_queue_size -= ref->_wq_diff;
+   // stream->write_queue_size -= 1;
+   // QUEUE_INSERT_TAIL(&stream->write_completed_queue, &req->queue);
+   // uv__io_feed(stream->loop, &stream->io_watcher);
+   uv__write_req_finish(req);
+   // printf("Write completed\n");
    // free(ixev_ref_ptr);
     mempool_free(&ixuv__ref_pool, ref);
-
 }
 
 #define ZEROCOPY
@@ -277,10 +221,11 @@ int uv__tcp_write(uv_write_t* req,
   uv_tcp_t* stream = handle; //alias
 
   #ifdef ZEROCOPY
+  int n_sent = 0;
   static bool initialised_mempool = false;
   if( unlikely( !initialised_mempool)){
     int ret;
-      ret = mempool_create_datastore(&ixuv__ref_datastore, 16384, sizeof(struct ixuv_ref), 0, MEMPOOL_DEFAULT_CHUNKSIZE, "ixuv_ref");
+      ret = mempool_create_datastore(&ixuv__ref_datastore, 16384*128, sizeof(struct ixuv_ref), 0, MEMPOOL_DEFAULT_CHUNKSIZE, "ixuv_ref");
       ret |= mempool_create(&ixuv__ref_pool, &ixuv__ref_datastore);
       if (ret) {
         printf("unable to create mempool\n");
@@ -295,17 +240,24 @@ int uv__tcp_write(uv_write_t* req,
   unsigned int i;
   // printf("Writing to stream: %p nbufs %d\n", handle, nbufs);
   if(handle->_ixev_ctx == NULL || handle->flags & UV_CLOSED){ //@TODO: Fix better error code for closed stream(?)
-    printf("IXEV ctx null - aborting write");
+    fprintf(stderr, "uv__tcp_write: IXEV ctx null - aborting write");
     return -1; //TODO: FIX better error code
   }
   for (i = 0; i < nbufs && error >= 0; ++i)
   {
     #ifdef ZEROCOPY
     error = ixev_send_zc( handle->_ixev_ctx, (void*) bufs[i].base, (size_t) bufs[i].len); 
+    n_sent = bufs[i].len;
     #else
     error = ixev_send( handle->_ixev_ctx, (void*) bufs[i].base, (size_t) bufs[i].len); 
     #endif
-    if(error < 0) printf("Error: %d\n", error) ; 
+    if(error < 0) {
+      // if( -error == EAGAIN) {
+      //     i--;
+      // }
+      fprintf(stderr, "uv__tcp_write error: %s\n", strerror(-error) ); 
+    }
+
   }
 
 /** Taken from uv_write2 */
@@ -330,11 +282,14 @@ int uv__tcp_write(uv_write_t* req,
     ref->_ixev_ref.cb = ixuv__write_complete_callback;
     ref->_stream = stream;
     ref->_req = req;
+    ref->_wq_diff = n_sent;
     ixev_add_sent_cb(handle->_ixev_ctx, &ref->_ixev_ref);
 
+    QUEUE_INSERT_TAIL(&stream->write_queue, &req->queue);
     // QUEUE_INSERT_TAIL(&stream->write_queue, &req->queue);
-    stream->write_queue_size += 1; //Important to not make libuv/app close the stream prematurely
+    stream->write_queue_size += ref->_wq_diff; //1; //Important to not make libuv/app close the stream prematurely
   #else
+    // printf("sending\n");
     QUEUE_INSERT_TAIL(&stream->write_completed_queue, &req->queue);
     uv__io_feed(stream->loop, &stream->io_watcher);
   #endif
@@ -368,7 +323,7 @@ static int maybe_new_socket(uv_tcp_t* handle, int domain, int flags) {
 }
 
 static void extract_addr_port(const struct sockaddr* addr, unsigned long* ip_addr, unsigned short* port){
-  if(addr->sa_family == AF_INET){
+  if(addr->sa_family == AF_INET ){
     // printf("Extract IPv4\n");
     struct sockaddr_in* in_addr = (struct sockaddr_in*) addr;
     *ip_addr = in_addr->sin_addr.s_addr;
@@ -379,7 +334,7 @@ static void extract_addr_port(const struct sockaddr* addr, unsigned long* ip_add
     // printf("Extract IPv6\n");
 
     struct sockaddr_in6* in_addr = (struct sockaddr_in6*) addr;
-    *ip_addr = -1;
+    *ip_addr =  -1;
     *port    = in_addr->sin6_port;
     return;
   }
@@ -440,13 +395,9 @@ int uv__tcp_bind(uv_tcp_t* tcp,
   return 0;*/
 }
 
-
-// struct ixev_conn_ops pp_conn_ops = {
-//   .accept   = NULL,
-//   .release  = NULL,
-// };
-
-
+/**
+ * TODO: IMPLEMENT over IX when IX supports  outgoing connections
+ */
 int uv__tcp_connect(uv_connect_t* req,
                     uv_tcp_t* handle,
                     const struct sockaddr* addr,
@@ -454,8 +405,7 @@ int uv__tcp_connect(uv_connect_t* req,
                     uv_connect_cb cb) {
   int err;
   int r;
-  // printf("TCP connect\n" );
- //r = ixev_init(&pp_conn_ops);
+
  
 
   assert(handle->type == UV_TCP);
@@ -502,7 +452,9 @@ int uv__tcp_connect(uv_connect_t* req,
   return 0;
 }
 
-
+/*
+ * Deprecated, IX does not support sockets.
+ */
 int uv_tcp_open(uv_tcp_t* handle, uv_os_sock_t sock) {
   int err;
 
@@ -560,7 +512,7 @@ int uv_tcp_getpeername(const uv_tcp_t* handle,
 }
 
 void uv__mock_server_io(uv_loop_t* loop, uv__io_t* w, unsigned int events) {
-  printf("Mock server io\n");
+  fprintf(stderr, "Mock server io, should not be called\n");
 }
 
 
