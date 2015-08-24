@@ -37,13 +37,14 @@
 
 static void ixuv_release(struct ixev_ctx *ctx)
 {
-  // printf("Need to implement a nice release method: %p (%p)\n", ctx, ctx->user_data);
+  printf("Need to implement a nice release method: %p (%p)\n", ctx, ctx->user_data);
   // struct pp_conn *conn = container_of(ctx, struct pp_conn, ctx);
   uv_tcp_t* stream = (uv_tcp_t*) ctx->user_data; 
-  ctx->user_data = NULL;
+  ctx->user_data = (int64_t) NULL;
   if(stream != NULL && stream->read_cb != NULL){
     // printf("Gonna call read callback with nullbuf\n");
     stream->read_cb((uv_stream_t*)stream, UV_EOF, &null_buf);
+    stream->flags |= UV_CLOSING;
     uv__make_close_pending((uv_handle_t*) stream); //Since we return immediately from uv close in case of TCP to allow IX to close the connection before calling the callback
     //TODO;  CHECK if node will call uv_close upon receiving UV_EOF on reab_cb
     // printf("Call OK\n");

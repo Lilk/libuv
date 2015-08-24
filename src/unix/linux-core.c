@@ -218,6 +218,8 @@ void uv__platform_invalidate_fd(uv_loop_t* loop, int fd) {
 // }
 
 void ixuv__handle_uds_events(uv_loop_t* loop, int32_t events, int fd ) {
+
+    printf("handle_uds_events\n");
     struct epoll_event event;
     event.events = events;
     event.data.fd = fd;
@@ -241,7 +243,7 @@ void ixuv__handle_uds_events(uv_loop_t* loop, int32_t events, int fd ) {
          * Ignore all errors because we may be racing with another thread
          * when the file descriptor is closed.
          */
-        uv__epoll_ctl(loop->backend_fd, UV__EPOLL_CTL_DEL, fd, pe);
+        uv__epoll_ctl(loop->backend_fd, UV__EPOLL_CTL_DEL, fd, (struct uv__epoll_event*)pe);
 
       } else {
 
@@ -298,8 +300,8 @@ void uv__io_poll(uv_loop_t* loop, int timeout) {
   uv__io_t* w;
   // sigset_t sigset;
   // uint64_t sigmask;
-  // uint64_t base;
-  // uint64_t diff;
+  uint64_t base;
+  uint64_t diff;
   // int nevents;
   // int count;
   // int nfds;
@@ -364,7 +366,10 @@ void uv__io_poll(uv_loop_t* loop, int timeout) {
   // base = loop->time;
   // count = 48; /* Benchmarks suggest this gives the best throughput. */
 
-  //for (;;) // probaly cant have this due to correctnes of watcher queue, since IX does not have a timeout in the poll
+  if(-1 == timeout ){
+    timeout = 100; //Infinite timeout=100ms
+  }
+  // for (;;) // probaly cant have this due to correctnes of watcher queue, since IX does not have a timeout in the poll
   {
     /*
     if (sigmask != 0 && no_epoll_pwait != 0)
@@ -445,7 +450,7 @@ void uv__io_poll(uv_loop_t* loop, int timeout) {
 //       continue;
 
 // update_timeout:
-//     assert(timeout > 0);
+//     // assert(timeout > 0);
 
 //     diff = loop->time - base;
 //     if (diff >= (uint64_t) timeout)
