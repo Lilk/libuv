@@ -83,15 +83,16 @@ int ixuv__init(uv_loop_t* loop){
   if ( ixuv__static_loop == NULL ) {
     ixuv__static_loop = loop;
     ixev_init(&ixuv_conn_ops);
-  }
+ 
 
-  int ret;
+    int ret;
 
-  ret = ixev_init_thread();
-  if (ret) {
-    printf("unable to init IXUV\n");
-    return -1;
-  };
+    ret = ixev_init_thread();
+    if (ret) {
+      printf("unable to init IXUV\n");
+      return -1;
+    };
+   }
 
 }
 
