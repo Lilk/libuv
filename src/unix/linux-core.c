@@ -89,6 +89,8 @@ int uv__platform_loop_init(uv_loop_t* loop) {
       uv__cloexec(fd, 1);
   }
 
+  fprintf(stderr, "BACKEND FD : %d\n", fd);
+
   loop->backend_fd = fd;
   loop->inotify_fd = -1;
   loop->inotify_watchers = NULL;
@@ -109,6 +111,7 @@ void uv__platform_loop_delete(uv_loop_t* loop) {
 
 
 void uv__platform_invalidate_fd(uv_loop_t* loop, int fd) {
+  printf(" !!!!!!!!!!!! uv__platform_invalidate_fd: %d\n", fd);
   struct uv__epoll_event* events;
   struct uv__epoll_event dummy;
   uintptr_t i;
@@ -130,13 +133,16 @@ void uv__platform_invalidate_fd(uv_loop_t* loop, int fd) {
    *
    * We pass in a dummy epoll_event, to work around a bug in old kernels.
    */
-  if (loop->backend_fd >= 0) {
-    /* Work around a bug in kernels 3.10 to 3.19 where passing a struct that
-     * has the EPOLLWAKEUP flag set generates spurious audit syslog warnings.
-     */
-    memset(&dummy, 0, sizeof(dummy));
-    uv__epoll_ctl(loop->backend_fd, UV__EPOLL_CTL_DEL, fd, &dummy);
-  }
+   fprintf(stderr, "LOOP BACKEND FD: %d\n", loop->backend_fd);
+  // if (loop->backend_fd >= 0) {
+  //    Work around a bug in kernels 3.10 to 3.19 where passing a struct that
+  //    * has the EPOLLWAKEUP flag set generates spurious audit syslog warnings.
+     
+  //   memset(&dummy, 0, sizeof(dummy));
+  //   uv__epoll_ctl(loop->backend_fd, UV__EPOLL_CTL_DEL, fd, &dummy);
+  // }
+  memset(&dummy, 0, sizeof(dummy)); // IX does not expose its backend fd. Everything is done with fd = -1
+  uv__epoll_ctl(loop->backend_fd, UV__EPOLL_CTL_DEL, fd, &dummy); 
 }
 // void ixuv__handle_uds_events(uv_loop_t* loop, struct epoll_event* events, int nfds ) {
 //     printf("LOG: got callback that stuff happened on UDS\n");
@@ -277,6 +283,7 @@ void ixuv__handle_uds_events(uv_loop_t* loop, int32_t events, int fd ) {
 
         if (w == loop->watchers[fd]) {  /*  NOT Disabled by callback. */
            
+           fprintf(stderr, "===REARMING UDS fd %d\n", fd);
            /* IX UDS operates in oneshot mode, rearm timer on next run. */
           if (w->pevents != 0 && QUEUE_EMPTY(&w->watcher_queue))
             QUEUE_INSERT_TAIL(&loop->watcher_queue, &w->watcher_queue);
@@ -335,6 +342,7 @@ void uv__io_poll(uv_loop_t* loop, int timeout) {
     else
       op = UV__EPOLL_CTL_MOD;
 
+    fprintf(stderr, "WATCHER QUEUE EPOLL OPERATION %d\n", op);
 
     /* XXX Future optimization: do EPOLL_CTL_MOD lazily if we stop watching
      * events, skip the syscall and squelch the events after epoll_wait().
@@ -342,12 +350,15 @@ void uv__io_poll(uv_loop_t* loop, int timeout) {
     if (uv__epoll_ctl(loop->backend_fd, op, w->fd, &e)) {
       if (errno != EEXIST)
         abort();
-
+      fprintf(stderr, "uv__epoll_ctl return nonzero, asserting it came from an add\n");
       assert(op == UV__EPOLL_CTL_ADD);
+      fprintf(stderr, "Assert OK, changing to MOD\n");
       /* We've reactivated a file descriptor that's been watched before. */
       if (uv__epoll_ctl(loop->backend_fd, UV__EPOLL_CTL_MOD, w->fd, &e))
         abort();
+
     }
+    fprintf(stderr, "EPOLL ARMING COMPLETED\n");
     w->events = w->pevents;
   }
     // printf("linux/core uv io poll: %d\n", timeout);
@@ -393,7 +404,9 @@ void uv__io_poll(uv_loop_t* loop, int timeout) {
         no_epoll_wait = 1;
     }
     */
+    printf("Calling ixev_wait\n");
     ixev_wait(); // replaces epoll_wait()
+    printf("IXEV returned from polling\n");
 
     // if (sigmask != 0 && no_epoll_pwait != 0)
     //   if (pthread_sigmask(SIG_UNBLOCK, &sigset, NULL))

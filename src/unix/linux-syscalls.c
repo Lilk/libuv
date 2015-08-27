@@ -309,7 +309,12 @@ int uv__epoll_create1(int flags) {
 
 
 int uv__epoll_ctl(int epfd, int op, int fd, struct uv__epoll_event* events) {
-  return ix_uds_ctl(fd, op, (struct epoll_event*) events);
+  // printf("epfd %d op %d fd %d, fd2 %d\n", epfd, op, fd, events->data);
+  int ret =  ix_uds_ctl(fd, op, (struct epoll_event*) events);
+  if (ret ){
+    printf("uv__epoll_ctl: %s\n", strerror(errno));
+  }
+  return ret;
 
 #if defined(__NR_epoll_ctl)
   return syscall(__NR_epoll_ctl, epfd, op, fd, events);

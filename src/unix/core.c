@@ -108,6 +108,7 @@ void uv_close(uv_handle_t* handle, uv_close_cb close_cb) {
     break;
 
   case UV_TCP:
+    printf("called close for tcp handle\n");
     uv__tcp_close((uv_tcp_t*)handle);
     return; // dont close until were done from IX
     break;
@@ -246,6 +247,7 @@ static void uv__finish_close(uv_handle_t* handle) {
 
   if (handle->close_cb) {
     handle->close_cb(handle);
+    // printf("Called the handles close_cb\n");
   }
 }
 
@@ -836,6 +838,7 @@ void uv__io_stop(uv_loop_t* loop, uv__io_t* w, unsigned int events) {
   if (w->fd == -1)
     return;
 
+
   assert(w->fd >= 0);
 
   /* Happens when uv__io_stop() is called on a handle that was never started. */
@@ -849,6 +852,7 @@ void uv__io_stop(uv_loop_t* loop, uv__io_t* w, unsigned int events) {
     QUEUE_INIT(&w->watcher_queue);
 
     if (loop->watchers[w->fd] != NULL) {
+      printf("resetting watchers for fd\n");
       assert(loop->watchers[w->fd] == w);
       assert(loop->nfds > 0);
       loop->watchers[w->fd] = NULL;
@@ -856,15 +860,22 @@ void uv__io_stop(uv_loop_t* loop, uv__io_t* w, unsigned int events) {
       w->events = 0;
     }
   }
-  else if (QUEUE_EMPTY(&w->watcher_queue))
+  else if (QUEUE_EMPTY(&w->watcher_queue)){
     QUEUE_INSERT_TAIL(&loop->watcher_queue, &w->watcher_queue);
+    printf("inserted into watcher queue\n");
+  }
 }
 
 
 void uv__io_close(uv_loop_t* loop, uv__io_t* w) {
+  fprintf(stderr, "uv__io_close for %d\n", w->fd);
+
+
   uv__io_stop(loop, w, UV__POLLIN | UV__POLLOUT);
+  printf("DEREGISTERED CALLBACK HANDLES VIA uv__io_stop\n");
   QUEUE_REMOVE(&w->pending_queue);
 
+  printf("calling uv__platform_invalidate_fd from uv__io_close\n");
   /* Remove stale events for this file descriptor */
   uv__platform_invalidate_fd(loop, w->fd);
 }

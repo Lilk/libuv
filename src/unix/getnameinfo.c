@@ -58,9 +58,9 @@ static void uv__getnameinfo_done(struct uv__work* w, int status) {
   char* service;
 
   req = container_of(w, uv_getnameinfo_t, work_req);
-  uv__req_unregister(req->loop, req);
+uv__req_unregister(req->loop, req);
+  
   host = service = NULL;
-
   if (status == -ECANCELED) {
     assert(req->retcode == 0);
     req->retcode = UV_EAI_CANCELED;
