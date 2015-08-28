@@ -55,9 +55,9 @@ void ixuv__tcp_server_io(uv_loop_t* loop, uv__io_t* w, unsigned int events) {
   uv_stream_t* stream = container_of(w, uv_stream_t, io_watcher);
 
   void * addr = ( (uv_tcp_t*)stream)->pending_ctx_head == NULL? NULL: (void*) ( (uv_tcp_t*)stream)->pending_ctx_head->_ixev_ctx;
-  fprintf(stderr, " - Server %p is calling its connection_cb, preparing to let user accept %p\n", stream, addr);
+  // fprintf(stderr, " - Server %p is calling its connection_cb, preparing to let user accept %p\n", stream, addr);
   stream->connection_cb(stream, 0);
-  fprintf(stderr, " - CONNECTION CB DONE\n");
+  // fprintf(stderr, " - CONNECTION CB DONE\n");
 }
 
 
@@ -65,7 +65,7 @@ void ixuv__tcp_server_io(uv_loop_t* loop, uv__io_t* w, unsigned int events) {
  * Puts a binding from an address to a server handle.
  */
 void ixuv__put_binding(unsigned long addr, unsigned short port, uv_tcp_t* tcp){
-  printf("Put %ld %d: %p\n", addr, port, tcp);
+  // printf("Put %ld %d: %p\n", addr, port, tcp);
   singleton_listening_socket_addr = addr;
   singleton_listening_socket_port = port;
   singleton_listening_socket = tcp;
@@ -120,10 +120,10 @@ static void ixuv__multiplex_handler(struct ixev_ctx *ctx, unsigned int reason) {
         uv_buf_t buf;
         stream->alloc_cb((uv_handle_t*)stream, 64 * 1024, &buf);
         int read = ixev_recv(ctx, buf.base, buf.len);
-        printf("READ (%d): [%s]\n\n CALLING READ CB \n\n", read, buf.base);
+        // printf("READ (%d): [%s]\n\n CALLING READ CB \n\n", read, buf.base);
        
         stream->read_cb((uv_stream_t*)stream, read, &buf);     
-        printf("READ CB EXeCUteD\n");
+        // printf("READ CB EXeCUteD\n");
     } if (  reason == IXEVHUP){
         // fprintf(stderr, "connection died\n");
         ((uv_tcp_t*) ctx->user_data)-> _ixev_ctx = NULL; // Prevent us from trying to close the ixev_ctx if it was already close by IX. 
@@ -177,7 +177,7 @@ struct ixev_ctx *ixuv__accept(struct ip_tuple *id)
 
   ixev_ctx* ctx = (ixev_ctx*) malloc(sizeof(ixev_ctx)); // @TODO: Implement mempool allocation
   if (!ctx){
-    printf("Returning NULL\n");
+    printf("ixuv__accept: could not allocate ixev_ctx.\n");
     return NULL;
   }
 
@@ -188,16 +188,14 @@ struct ixev_ctx *ixuv__accept(struct ip_tuple *id)
   ixuv__enqueue_ctx(listening_socket, ctx);
   
 
-  uv__io_feed(listening_socket->loop, &listening_socket->io_watcher);
-
 
   // listening_socket->connection_cb((uv_stream_t*)listening_socket, 0); //unsure what errors could have occured
-
-  printf("Returning %p ixev_context, calling ix_accept\n", ctx);
+  uv__io_feed(listening_socket->loop, &listening_socket->io_watcher);
+  // We feed IO on the listening socket so that the connection callback only is run after the connection
+  // has been accepted by IX, to avoid problems if the server starts writing immediately.
+  
+  // printf("Returning %p ixev_context, calling ix_accept\n", ctx);
   return ctx;
-
-
-
 }
 
 int uv__tcp_accept(uv_tcp_t* server, uv_tcp_t* client){
@@ -231,31 +229,23 @@ static __thread struct mempool ixuv__ref_pool;
 
 
 static void ixuv__write_complete_callback(struct ixev_ref *ixev_ref_ptr){
-  printf("Write completed\n");
    struct ixuv_ref* ref = container_of(ixev_ref_ptr, struct ixuv_ref, _ixev_ref);
 
-   printf("A\n");
    uv_tcp_t* stream = ref->_stream;
    uv_write_t* req = ref->_req;
 
-   printf("B\n");
 
    stream->write_queue_size -= ref->_wq_diff;
-      printf("C\n");
 
    // stream->write_queue_size -= 1;
-   // QUEUE_INSERT_TAIL(&stream->write_completed_queue, &req->queue);
-   // uv__io_feed(stream->loop, &stream->io_watcher);
-      printf("D\n");
-
+   QUEUE_INSERT_TAIL(&stream->write_completed_queue, &req->queue);
+   uv__io_feed(stream->loop, &stream->io_watcher);
+  
    uv__write_req_finish(req);
-   // printf("Write completed\n");
-   // free(ixev_ref_ptr);
-      printf("E\n");
+
 
     mempool_free(&ixuv__ref_pool, ref);
 
-    printf("freed request\n");
 }
 
 #define ZEROCOPY
@@ -270,12 +260,10 @@ int uv__tcp_write(uv_write_t* req,
   unsigned int i;
   uv_tcp_t* stream = handle; //alias
                              //
-  fprintf(stderr, "uv__tcp write called: req; %p handle %p flow: %p bufs %d \n", req, handle, handle->_ixev_ctx, nbufs);
+  // fprintf(stderr, "uv__tcp write called: req; %p handle %p flow: %p bufs %d \n", req, handle, handle->_ixev_ctx, nbufs);
 
 
-  for(i = 0; i < nbufs; i++){
-    printf("buf %d: %p [%s]\n",i, bufs[i].base, bufs[i].base);
-  }
+
 
   #ifdef ZEROCOPY
   int n_sent = 0;
@@ -305,7 +293,7 @@ int uv__tcp_write(uv_write_t* req,
   {
 
     #ifdef ZEROCOPY
-    printf("Telling IX to send %d bytes from %p\n",bufs[i].len-inc, bufs[i].base + inc );
+    // printf("Telling IX to send %d bytes from %p\n",bufs[i].len-inc, bufs[i].base + inc );
     error = ixev_send_zc( handle->_ixev_ctx, (void*) bufs[i].base + inc, (size_t) bufs[i].len-inc); 
     #else
     error = ixev_send( handle->_ixev_ctx, (void*) bufs[i].base + inc, (size_t) bufs[i].len-inc); 
@@ -321,12 +309,12 @@ int uv__tcp_write(uv_write_t* req,
     } else  {
       n_sent = bufs[i].len;
       if( error + inc == bufs[i].len ){
-         printf("Told IX to send %d bytes from %p\n",bufs[i].len-inc, bufs[i].base + inc );
+         // printf("Told IX to send %d bytes from %p\n",bufs[i].len-inc, bufs[i].base + inc );
         inc = 0;
         i++;
         continue;
       }
-      fprintf(stderr, "Failed to send entire buffer.\n" );
+      // fprintf(stderr, "Failed to send entire buffer.\n" );
       inc += error;
     }
 
@@ -357,7 +345,7 @@ int uv__tcp_write(uv_write_t* req,
     ref->_wq_diff = n_sent;
     ixev_add_sent_cb(handle->_ixev_ctx, &ref->_ixev_ref);
 
-    QUEUE_INSERT_TAIL(&stream->write_queue, &req->queue);
+    // QUEUE_INSERT_TAIL(&stream->write_queue, &req->queue);
     // QUEUE_INSERT_TAIL(&stream->write_queue, &req->queue);
     stream->write_queue_size += ref->_wq_diff; //1; //Important to not make libuv/app close the stream prematurely
   #else
@@ -366,7 +354,7 @@ int uv__tcp_write(uv_write_t* req,
     uv__io_feed(stream->loop, &stream->io_watcher);
   #endif
 
-    printf("write done\n");
+
   return 0;
 }
 
@@ -699,16 +687,16 @@ int uv_tcp_simultaneous_accepts(uv_tcp_t* handle, int enable) {
 
 
 void uv__tcp_close(uv_tcp_t* handle) {
-  printf("Closing time\n");
+  // printf("Closing time\n");
   // uv__stream_close((uv_stream_t*)handle);
     if( ((uv_tcp_t*) handle)->_ixev_ctx != NULL){
-      printf("closing handle\n");
+      // printf("closing handle\n");
        ixev_close(((uv_tcp_t*) handle)->_ixev_ctx);
        // ((uv_tcp_t*) handle)->_ixev_ctx->user_data = NULL;
        ((uv_tcp_t*) handle)->_ixev_ctx = NULL;
       }
       // ix_flush();
-      printf("after\n");
+      // printf("after\n");
       handle->io_watcher.fd = -1;
       // uv__handle_stop(handle);
 }

@@ -108,7 +108,7 @@ int uv_pipe_listen(uv_pipe_t* handle, int backlog, uv_connection_cb cb) {
 
 
 void uv__pipe_close(uv_pipe_t* handle) {
-  printf("UV_PIPE_CLOSE CALLED: %d\n", handle->io_watcher.fd);
+  // printf("UV_PIPE_CLOSE CALLED: %d\n", handle->io_watcher.fd);
   if (handle->pipe_fname) {
     /*
      * Unlink the file system entity before closing the file descriptor.

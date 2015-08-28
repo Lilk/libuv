@@ -72,7 +72,7 @@ static void ixuv__write_callbacks_io(uv_loop_t* loop, uv__io_t* w, unsigned int 
   uv_stream_t* stream;
 
   stream = container_of(w, uv_stream_t, io_watcher);
-  printf("IXUV write callbacks\n");
+  // printf("IXUV write callbacks\n");
   uv__write_callbacks(stream);
 
 }
@@ -721,10 +721,10 @@ static size_t uv__write_req_size(uv_write_t* req) {
 
 
 void uv__write_req_finish(uv_write_t* req) { //modified from static
-  printf("write req Finish\n");
+  // printf("write req Finish\n");
   uv_stream_t* stream = req->handle;
 
-  printf("deref\n");
+  // printf("deref\n");
   /* Pop the req off tcp->write_queue. */
   QUEUE_REMOVE(&req->queue);
 
@@ -734,7 +734,7 @@ void uv__write_req_finish(uv_write_t* req) { //modified from static
    * they should stop writing - which they should if we got an error. Something
    * to revisit in future revisions of the libuv API.
    */
-   printf("before buf_free\n");
+   // printf("before buf_free\n");
   if (req->error == 0) {
     if (req->bufs != req->bufsml)
       free(req->bufs);
@@ -744,10 +744,10 @@ void uv__write_req_finish(uv_write_t* req) { //modified from static
   /* Add it to the write_completed_queue where it will have its
    * callback called in the near future.
    */
-   printf("before tail\n");
+   // printf("before tail\n");
   QUEUE_INSERT_TAIL(&stream->write_completed_queue, &req->queue);
   uv__io_feed(stream->loop, &stream->io_watcher);
-  printf("io feed done\n");
+  // printf("io feed done\n");
 }
 
 
@@ -780,7 +780,7 @@ static int uv__getiovmax() {
 
 static void uv__write(uv_stream_t* stream) {
 
-  printf("\n\n=++++=+uv__write\n\n");
+  // printf("\n\n=++++=+uv__write\n\n");
   struct iovec* iov;
   QUEUE* q;
   uv_write_t* req;
@@ -1368,7 +1368,7 @@ int uv_write2(uv_write_t* req,
               unsigned int nbufs,
               uv_stream_t* send_handle,
               uv_write_cb cb) {
-    printf("\n\n=++++=+uv_write2\n\n");
+    // printf("\n\n=++++=+uv_write2\n\n");
 
   if(stream->type == UV_TCP) return uv__tcp_write(req, (uv_tcp_t*) stream, bufs, nbufs, cb);
 
@@ -1461,7 +1461,7 @@ int uv_write(uv_write_t* req,
              const uv_buf_t bufs[],
              unsigned int nbufs,
              uv_write_cb cb) {
-    printf("\n\n=++++=+uv_write\n\n");
+    // printf("\n\n=++++=+uv_write\n\n");
 
   if(handle->type == UV_TCP) return uv__tcp_write(req, (uv_tcp_t*) handle, bufs, nbufs, cb);
   return uv_write2(req, handle, bufs, nbufs, NULL, cb);
@@ -1477,7 +1477,7 @@ void uv_try_write_cb(uv_write_t* req, int status) {
 int uv_try_write(uv_stream_t* stream,
                  const uv_buf_t bufs[],
                  unsigned int nbufs) {
-  printf("\n\n=++++=+uv_try_write\n\n");
+  // printf("\n\n=++++=+uv_try_write\n\n");
 
   int r;
   int has_pollout;
@@ -1649,37 +1649,37 @@ void uv__stream_close(uv_stream_t* handle) {
       return;
   }
 
-  printf("Uv uv__stream_close\n");
+  // printf("Uv uv__stream_close\n");
   uv__io_close(handle->loop, &handle->io_watcher);
-    printf("uv__stream_close, uv__io_close done\n");
+    // printf("uv__stream_close, uv__io_close done\n");
 
   uv_read_stop(handle);
-      printf("uv__stream_close, uv_read_stop done\n");
+      // printf("uv__stream_close, uv_read_stop done\n");
 
   uv__handle_stop(handle);
 
-      printf("uv__stream_close, uv__handle_stop done\n");
+      // printf("uv__stream_close, uv__handle_stop done\n");
 
 
   if (handle->io_watcher.fd != -1) {
     /* Don't close stdio file descriptors.  Nothing good comes from it. */
     if (handle->io_watcher.fd > STDERR_FILENO){
-      fprintf(stderr, "TRYING TO CLOSE %d\n", handle->io_watcher.fd);
+      // fprintf(stderr, "TRYING TO CLOSE %d\n", handle->io_watcher.fd);
       uv__close(handle->io_watcher.fd);
     }
     handle->io_watcher.fd = -1;
   }
 
-      printf("uv__stream_close, handle->io_watcher.fd != -1 done\n");
+      // printf("uv__stream_close, handle->io_watcher.fd != -1 done\n");
 
 
   if (handle->accepted_fd != -1) {
-    fprintf(stderr, " TRYING TO CLOSE %d\n", handle->accepted_fd);
+    // fprintf(stderr, " TRYING TO CLOSE %d\n", handle->accepted_fd);
     uv__close(handle->accepted_fd);
     handle->accepted_fd = -1;
   }
 
-      printf("uv__stream_close, hhandle->accepted_fd done\n");
+      // printf("uv__stream_close, hhandle->accepted_fd done\n");
 
   /* Close all queued fds */
   if (handle->queued_fds != NULL) {
@@ -1690,11 +1690,11 @@ void uv__stream_close(uv_stream_t* handle) {
     handle->queued_fds = NULL;
   }
 
-        printf("uv__stream_close, handle->queued_fds != NULL done\n");
+        // printf("uv__stream_close, handle->queued_fds != NULL done\n");
 
 
   assert(!uv__io_active(&handle->io_watcher, UV__POLLIN | UV__POLLOUT));
-  printf("after uv-close\n");
+  // printf("after uv-close\n");
 }
 
 
